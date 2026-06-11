@@ -296,6 +296,12 @@ Acceptance:
 - Browser coverage includes replay controls, 4x speed, undo markers, local
   Vision fallback, AI Coach context transfer, mobile replay layout, and legacy
   paper migration with a generated very-long-pause marker.
+- Feature commit: `25f9d31` (`Upgrade solution paper thinking replay`).
+- Production deployment reached Vercel `READY` at
+  `https://platform-rho-gilt.vercel.app`.
+- A live production run created and replayed a paper, displayed the local
+  summary, completed MiniMax Vision successfully, and reported no browser
+  console errors.
 
 Security audit:
 
