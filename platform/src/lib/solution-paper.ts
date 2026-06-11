@@ -1,88 +1,378 @@
 import type {
+  PaperAction,
+  ReplayMarker,
+  RevisionMetrics,
   SolutionAnalysis,
+  SolutionPaperRecord,
   SolutionProcessMetrics,
   SolutionStroke,
+  ThinkingReplaySummary,
 } from "@/lib/domain";
 
-const meaningfulPauseMs = 5_000;
+export const LONG_PAUSE_THRESHOLD_SECONDS = 15;
+export const VERY_LONG_PAUSE_THRESHOLD_SECONDS = 45;
+const revisionClusterWindowMs = 20_000;
+
+type ReplayEvent =
+  | { timestamp: number; kind: "stroke"; stroke: SolutionStroke }
+  | { timestamp: number; kind: "action"; action: PaperAction };
+
+function orderedEvents(strokes: SolutionStroke[], actions: PaperAction[]) {
+  const events: ReplayEvent[] = [
+    ...strokes.map(
+      (stroke): ReplayEvent => ({
+        timestamp: stroke.startedAt,
+        kind: "stroke",
+        stroke,
+      }),
+    ),
+    ...actions.map(
+      (action): ReplayEvent => ({
+        timestamp: action.timestamp,
+        kind: "action",
+        action,
+      }),
+    ),
+  ];
+  return events.sort(
+    (a, b) =>
+      a.timestamp - b.timestamp ||
+      (a.kind === "stroke" ? -1 : 1),
+  );
+}
+
+export function visibleStrokesAt(
+  strokes: SolutionStroke[],
+  actions: PaperAction[],
+  timestampMs = Number.POSITIVE_INFINITY,
+): SolutionStroke[] {
+  const visible: SolutionStroke[] = [];
+
+  for (const event of orderedEvents(strokes, actions)) {
+    if (event.timestamp > timestampMs) break;
+    if (event.kind === "stroke") {
+      const points = event.stroke.points.filter((point) => point.t <= timestampMs);
+      visible.push({
+        ...event.stroke,
+        points:
+          timestampMs >= event.stroke.endedAt
+            ? event.stroke.points
+            : points.length
+              ? points
+              : event.stroke.points.slice(0, 1),
+      });
+      continue;
+    }
+
+    if (event.action.type === "clear") {
+      visible.length = 0;
+    } else if (event.action.type === "undo" && event.action.targetStrokeId) {
+      const index = visible.findIndex(
+        (stroke) => stroke.id === event.action.targetStrokeId,
+      );
+      if (index >= 0) visible.splice(index, 1);
+    } else if (event.action.type === "redo" && event.action.targetStrokeId) {
+      const stroke = strokes.find(
+        (item) => item.id === event.action.targetStrokeId,
+      );
+      if (stroke && !visible.some((item) => item.id === stroke.id)) {
+        visible.push(stroke);
+      }
+    }
+  }
+
+  return visible;
+}
+
+export function calculateRevisionMetrics(
+  strokes: SolutionStroke[],
+  actions: PaperAction[],
+): RevisionMetrics {
+  const revisionTimes = [
+    ...strokes
+      .filter((stroke) => stroke.tool === "eraser")
+      .map((stroke) => stroke.startedAt),
+    ...actions.map((action) => action.timestamp),
+  ].sort((a, b) => a - b);
+  const hasRevisionCluster = revisionTimes.some((start, index) => {
+    const count = revisionTimes.filter(
+      (timestamp) =>
+        timestamp >= start && timestamp <= start + revisionClusterWindowMs,
+    ).length;
+    return index < revisionTimes.length && count >= 3;
+  });
+  const eraseCount = strokes.filter((stroke) => stroke.tool === "eraser").length;
+  const undoCount = actions.filter((action) => action.type === "undo").length;
+  const redoCount = actions.filter((action) => action.type === "redo").length;
+  const clearCount = actions.filter((action) => action.type === "clear").length;
+
+  return {
+    eraseCount,
+    undoCount,
+    redoCount,
+    clearCount,
+    revisionCount: eraseCount + undoCount + redoCount + clearCount,
+    hasRevisionCluster,
+  };
+}
+
+export function createReplayMarkers(
+  strokes: SolutionStroke[],
+  actions: PaperAction[],
+  totalTimeSeconds: number,
+): ReplayMarker[] {
+  const ordered = [...strokes].sort((a, b) => a.startedAt - b.startedAt);
+  const markers: ReplayMarker[] = [];
+
+  ordered.forEach((stroke, index) => {
+    const previousEnd = index === 0 ? 0 : ordered[index - 1].endedAt;
+    const pauseSeconds = Math.max(0, (stroke.startedAt - previousEnd) / 1000);
+    if (pauseSeconds >= LONG_PAUSE_THRESHOLD_SECONDS) {
+      const veryLong = pauseSeconds >= VERY_LONG_PAUSE_THRESHOLD_SECONDS;
+      markers.push({
+        id: `pause-${stroke.id}`,
+        timestamp: Math.round((stroke.startedAt / 1000) * 10) / 10,
+        type: veryLong ? "very_long_pause" : "long_pause",
+        label: veryLong ? "Very long pause" : "Long pause",
+        description: `${Math.round(pauseSeconds)} seconds without writing`,
+      });
+    }
+    if (stroke.tool === "eraser") {
+      markers.push({
+        id: `erase-${stroke.id}`,
+        timestamp: Math.round((stroke.startedAt / 1000) * 10) / 10,
+        type: "erase",
+        label: "Erase",
+      });
+    }
+  });
+
+  actions.forEach((action) => {
+    if (action.type === "redo") return;
+    markers.push({
+      id: `action-${action.id}`,
+      timestamp: Math.round((action.timestamp / 1000) * 10) / 10,
+      type: action.type,
+      label: action.type === "undo" ? "Undo" : "Clear",
+    });
+  });
+
+  if (strokes.length) {
+    markers.push({
+      id: "answer-written",
+      timestamp: totalTimeSeconds,
+      type: "answer_written",
+      label: "Paper saved",
+    });
+  }
+
+  return markers.sort((a, b) => a.timestamp - b.timestamp);
+}
 
 export function calculateSolutionMetrics(
   strokes: SolutionStroke[],
-  durationSeconds: number,
-  undoCount: number,
+  actionsOrDuration: PaperAction[] | number,
+  durationOrUndo: number,
 ): SolutionProcessMetrics {
+  const legacyCall = typeof actionsOrDuration === "number";
+  const actions: PaperAction[] = legacyCall
+    ? Array.from({ length: durationOrUndo }, (_, index) => ({
+        id: `legacy-undo-${index}`,
+        type: "undo" as const,
+        timestamp: 0,
+      }))
+    : actionsOrDuration;
+  const durationSeconds = legacyCall ? actionsOrDuration : durationOrUndo;
   const ordered = [...strokes].sort((a, b) => a.startedAt - b.startedAt);
-  const pauses = ordered.slice(1).map((stroke, index) =>
-    Math.max(0, stroke.startedAt - ordered[index].endedAt),
+  const pauseDurations = ordered.map((stroke, index) => {
+    const previousEnd = index === 0 ? 0 : ordered[index - 1].endedAt;
+    return Math.max(0, stroke.startedAt - previousEnd);
+  });
+  const longPauses = pauseDurations.filter(
+    (pause) => pause >= LONG_PAUSE_THRESHOLD_SECONDS * 1000,
   );
-  const meaningfulPauses = pauses.filter((pause) => pause >= meaningfulPauseMs);
+  const veryLongPauses = pauseDurations.filter(
+    (pause) => pause >= VERY_LONG_PAUSE_THRESHOLD_SECONDS * 1000,
+  );
   const activeMilliseconds = ordered.reduce(
     (sum, stroke) => sum + Math.max(0, stroke.endedAt - stroke.startedAt),
     0,
   );
+  const revision = calculateRevisionMetrics(strokes, actions);
 
   return {
     durationSeconds: Math.max(0, Math.round(durationSeconds)),
     activeSeconds: Math.max(0, Math.round(activeMilliseconds / 1000)),
+    idleSeconds: Math.max(
+      0,
+      Math.round(durationSeconds - activeMilliseconds / 1000),
+    ),
     strokeCount: ordered.filter((stroke) => stroke.tool === "pen").length,
-    eraserStrokeCount: ordered.filter((stroke) => stroke.tool === "eraser").length,
-    undoCount,
-    pauseCount: meaningfulPauses.length,
-    longestPauseSeconds: meaningfulPauses.length
-      ? Math.round(Math.max(...meaningfulPauses) / 1000)
+    eraserStrokeCount: revision.eraseCount,
+    undoCount: revision.undoCount,
+    redoCount: revision.redoCount,
+    clearCount: revision.clearCount,
+    pauseCount: longPauses.length,
+    longPauseCount: longPauses.length - veryLongPauses.length,
+    veryLongPauseCount: veryLongPauses.length,
+    longestPauseSeconds: longPauses.length
+      ? Math.round(Math.max(...longPauses) / 1000)
       : 0,
+    revisionCount: revision.revisionCount,
+    revisionClusterDetected: revision.hasRevisionCluster,
+    firstStrokeDelaySeconds: ordered.length
+      ? Math.round(ordered[0].startedAt / 1000)
+      : 0,
+  };
+}
+
+export function createThinkingReplaySummary(
+  metrics: SolutionProcessMetrics,
+): ThinkingReplaySummary {
+  let processPattern: ThinkingReplaySummary["processPattern"] = "unknown";
+  if (!metrics.durationSeconds || !metrics.strokeCount) {
+    processPattern = "unknown";
+  } else if (metrics.veryLongPauseCount >= 1) {
+    processPattern = "long_stuck";
+  } else if (metrics.revisionCount >= 5) {
+    processPattern = "frequent_revision";
+  } else if (metrics.firstStrokeDelaySeconds >= 20) {
+    processPattern = "slow_start";
+  } else if (metrics.strokeCount <= 3 && metrics.durationSeconds < 45) {
+    processPattern = "rushed";
+  } else if (metrics.strokeCount <= 3) {
+    processPattern = "minimal_work";
+  } else {
+    processPattern = "smooth";
+  }
+
+  const observations: Record<
+    ThinkingReplaySummary["processPattern"],
+    string
+  > = {
+    smooth:
+      "Matt wrote steadily with few long pauses or revisions. The process appears relatively stable.",
+    slow_start:
+      "Matt paused before meaningful writing, which may indicate that the starting strategy or problem-solving tool was unclear.",
+    frequent_revision:
+      "Matt revised the work several times. The plan may have changed during the solution instead of being selected before calculation.",
+    long_stuck:
+      "Matt had at least one very long pause. This suggests he may have stayed with an unproductive idea for too long.",
+    minimal_work:
+      "Matt recorded very little written structure, so it is difficult to verify the reasoning path.",
+    rushed:
+      "Matt finished quickly with little written structure. The process may not include enough checking or explanation.",
+    unknown:
+      "There is not enough process data to classify this solution reliably.",
+  };
+  const nextActions: Record<
+    ThinkingReplaySummary["processPattern"],
+    string
+  > = {
+    smooth:
+      "Keep the same structure and add one final line that checks the answer against the question.",
+    slow_start:
+      "Before calculating, name one likely tool: draw a diagram, list cases, use a table, or work backwards.",
+    frequent_revision:
+      "Spend the first 20 seconds writing the target quantity and chosen tool before doing calculations.",
+    long_stuck:
+      "Use the two-minute AMC8 rule: if no path is working, mark the problem, skip it, and return later.",
+    minimal_work:
+      "Show at least one equation, diagram, table, or case list before writing the final answer.",
+    rushed:
+      "Use the saved time to check the question wording and verify one calculation.",
+    unknown:
+      "Complete another Solution Paper with the timer running from the start.",
+  };
+  const observation = metrics.revisionClusterDetected
+    ? `${observations[processPattern]} Several revision actions occurred within a 20-second window.`
+    : observations[processPattern];
+
+  return {
+    totalTimeSeconds: metrics.durationSeconds,
+    activeWritingSeconds: metrics.activeSeconds,
+    idleTimeSeconds: metrics.idleSeconds,
+    strokeCount: metrics.strokeCount,
+    pauseCount: metrics.pauseCount,
+    longPauseCount: metrics.longPauseCount,
+    veryLongPauseCount: metrics.veryLongPauseCount,
+    longestPauseSeconds: metrics.longestPauseSeconds,
+    eraseCount: metrics.eraserStrokeCount,
+    undoCount: metrics.undoCount,
+    redoCount: metrics.redoCount,
+    clearCount: metrics.clearCount,
+    revisionCount: metrics.revisionCount,
+    revisionClusterDetected: metrics.revisionClusterDetected,
+    processPattern,
+    observation,
+    suggestedNextAction: nextActions[processPattern],
   };
 }
 
 export function createLocalSolutionAnalysis(
   metrics: SolutionProcessMetrics,
 ): SolutionAnalysis {
-  const strengths = [
-    metrics.strokeCount >= 4
-      ? "You recorded enough written work to review the solution process."
-      : "You kept the written work concise.",
-  ];
-  const unclearPoints: string[] = [];
-  const suggestions: string[] = [];
-
-  if (metrics.pauseCount > 0) {
-    unclearPoints.push(
-      `There ${metrics.pauseCount === 1 ? "was" : "were"} ${metrics.pauseCount} long pause${metrics.pauseCount === 1 ? "" : "s"}; the longest was ${metrics.longestPauseSeconds} seconds.`,
-    );
-    suggestions.push(
-      'At the next long pause, write a short note such as "find the ratio" or "draw a diagram" before continuing.',
-    );
-  }
-  if (metrics.eraserStrokeCount + metrics.undoCount >= 3) {
-    unclearPoints.push("Several revisions suggest that one part of the plan was unstable.");
-    suggestions.push(
-      "Separate planning from calculation: write the target quantity first, then choose the operation.",
-    );
-  }
-  if (metrics.strokeCount < 4) {
-    unclearPoints.push("There is very little visible reasoning to verify.");
-    suggestions.push("Show at least one equation or diagram before the final answer.");
-  }
-  if (metrics.durationSeconds > 180) {
-    suggestions.push(
-      "After three minutes, pause and try a second representation: table, diagram, equation, or smaller case.",
-    );
-  }
-  if (!suggestions.length) {
-    suggestions.push(
-      "Add a one-line conclusion that connects the calculation back to what the problem asks.",
-    );
-  }
-
+  const summary = createThinkingReplaySummary(metrics);
   return {
     source: "local",
     summary:
-      "This fallback report uses timing and editing behavior only. Handwriting content was not interpreted because MiniMax analysis was unavailable.",
-    approach: ["Recorded the written sequence and revision pattern."],
-    strengths,
-    unclearPoints,
+      "This local report uses stroke timing and revision behavior only. It does not read or recognize handwriting.",
+    approach: ["Reconstructed the writing, pause, and revision timeline."],
+    strengths:
+      summary.processPattern === "smooth"
+        ? ["The recorded process was steady and relatively stable."]
+        : [],
+    unclearPoints:
+      summary.pauseCount || summary.revisionCount
+        ? [summary.observation]
+        : [],
     errors: [],
-    suggestions,
+    suggestions: [summary.suggestedNextAction],
     notableIdea: null,
+  };
+}
+
+export function normalizeSolutionPaperRecord(
+  record: SolutionPaperRecord,
+): SolutionPaperRecord {
+  const actions =
+    record.actions ??
+    Array.from(
+      { length: record.metrics?.undoCount ?? 0 },
+      (_, index): PaperAction => ({
+        id: `legacy-undo-${record.id}-${index}`,
+        type: "undo",
+        timestamp: 0,
+      }),
+    );
+  const metrics = calculateSolutionMetrics(
+    record.strokes ?? [],
+    actions,
+    record.metrics?.durationSeconds ?? 0,
+  );
+  const thinkingReplaySummary =
+    record.thinkingReplaySummary ?? createThinkingReplaySummary(metrics);
+  const replayMarkers =
+    record.replayMarkers?.length
+      ? record.replayMarkers
+      : createReplayMarkers(
+          record.strokes ?? [],
+          actions,
+          metrics.durationSeconds,
+        );
+
+  return {
+    ...record,
+    attemptId: record.attemptId ?? record.id,
+    updatedAt: record.updatedAt ?? record.createdAt,
+    actions,
+    metrics,
+    replayMarkers,
+    thinkingReplaySummary,
+    analysisStatus:
+      record.analysisStatus ??
+      (record.analysis?.source === "minimax"
+        ? "vision_analyzed"
+        : "local_analyzed"),
   };
 }

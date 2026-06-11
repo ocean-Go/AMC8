@@ -241,6 +241,62 @@ Release acceptance:
 - A 390x844 production smoke test confirmed only Matt, Parent, and Admin
   workspaces, active MiniMax configuration, and no browser console errors.
 
+## 2026-06-11: Thinking Replay upgrade
+
+Goal:
+
+- Upgrade Solution Paper from a digital scratchpad into a deterministic
+  playback and process-diagnostic system for Matt's 20/25 target.
+
+Event model:
+
+- All pen and eraser strokes remain in history.
+- Undo, redo, and clear are stored as timestamped actions instead of deleting
+  historical evidence.
+- Visible canvas state is reconstructed from ordered stroke and action events.
+- Replay uses stroke points and timestamps; no screen recording or video is
+  generated.
+- Legacy saved papers are normalized on read. Missing actions, markers,
+  summaries, attempt IDs, and analysis state are generated deterministically.
+
+Process analytics:
+
+- Long pause threshold: 15 seconds.
+- Very long pause threshold: 45 seconds.
+- Three revision actions inside 20 seconds create a revision-cluster
+  observation.
+- Total, active-writing, and idle time are calculated separately.
+- Rule-based patterns: smooth, slow start, frequent revision, long stuck,
+  minimal work, rushed, and unknown.
+- Local reports explicitly state that they do not read or recognize
+  handwriting.
+
+User experience:
+
+- Added explicit `Start solving` so the delay before the first stroke is
+  measurable.
+- Added play, pause, restart, 1x/2x/4x speed, timeline scrubbing, marker
+  jumping, and current/total replay time.
+- Added saved-paper detail selection and a local process-summary panel.
+- Added optional `Analyze with AI Vision`; failure keeps the local report.
+- Added `Ask AI Coach`, passing the full Thinking Replay context into the
+  existing five-level Hint Ladder workflow.
+
+Safety and scope:
+
+- MiniMax credentials remain server-only.
+- No Supabase, multi-user, Chris, OCR guarantee, grading from handwriting,
+  video export, or expert-solution comparison was added.
+
+Acceptance:
+
+- `npm run verify`: passed, including material import, ESLint, 10 unit tests,
+  and the Next.js production build.
+- Playwright Chromium: 5 end-to-end tests passed.
+- Browser coverage includes replay controls, 4x speed, undo markers, local
+  Vision fallback, AI Coach context transfer, mobile replay layout, and legacy
+  paper migration with a generated very-long-pause marker.
+
 Security audit:
 
 - `npm audit --omit=dev` reports two moderate findings in the PostCSS version

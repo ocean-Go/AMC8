@@ -24,7 +24,11 @@ test("student can navigate the core learning flow", async ({ page }) => {
   await expect(page.getByText("Answer sheet")).toBeVisible();
 
   await page.getByRole("button", { name: "AI solution paper" }).click();
-  await expect(page.getByRole("heading", { name: "Write, replay, understand." })).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "Replay the work. Understand the thinking.",
+    }),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "AI coach" }).click();
   await expect(
@@ -40,6 +44,7 @@ test("student can navigate the core learning flow", async ({ page }) => {
 test("solution paper records handwriting and produces a saved review", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "AI solution paper" }).click();
+  await page.getByRole("button", { name: "Start solving" }).click();
   const canvas = page.getByLabel("Digital solution paper");
   const box = await canvas.boundingBox();
   expect(box).not.toBeNull();
@@ -55,15 +60,48 @@ test("solution paper records handwriting and produces a saved review", async ({ 
   await page.mouse.up();
 
   await expect(page.getByText("2 pen strokes")).toBeVisible();
-  await page.getByRole("button", { name: "Finish & analyze" }).click();
-  await expect(page.getByRole("heading", { name: "Process review" })).toBeVisible();
+  await page.getByRole("button", { name: "Undo" }).click();
+  await page.getByRole("button", { name: "Redo" }).click();
+  await page.getByRole("button", { name: "Finish & save replay" }).click();
+  await expect(page.getByText("Thinking replay", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Process summary" })).toBeVisible();
+  await expect(page.getByText("Local analytics")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Play replay" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Restart replay" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Undo at" })).toBeVisible();
+  await page.getByRole("button", { name: "4x" }).click();
+  await page.getByRole("button", { name: "Play replay" }).click();
+  await expect(page.getByRole("button", { name: "Pause replay" })).toBeVisible();
+  await page.getByRole("button", { name: "Pause replay" }).click();
   await expect(page.getByText("1 saved")).toBeVisible();
+  await page.getByRole("button", { name: "Analyze with AI Vision" }).click();
+  await expect(
+    page.getByText(
+      "AI Vision was unavailable. The local process summary remains valid.",
+    ),
+  ).toBeVisible();
+  await page.screenshot({
+    path: "test-results/thinking-replay-desktop.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  const replayCanvas = page.getByLabel("Thinking replay canvas");
+  const replayBox = await replayCanvas.boundingBox();
+  expect(replayBox).not.toBeNull();
+  expect(replayBox!.x + replayBox!.width).toBeLessThanOrEqual(390);
+  await page.screenshot({
+    path: "test-results/thinking-replay-mobile.png",
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Ask AI Coach" }).click();
+  await expect(page.getByText(/Thinking Replay:/)).toBeVisible();
 });
 
 test("solution paper stays inside a mobile viewport", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await page.getByRole("button", { name: "AI solution paper" }).click();
+  await page.getByRole("button", { name: "Start solving" }).click();
 
   const questionSelect = page.getByLabel("Practice problem");
   const canvas = page.getByLabel("Digital solution paper");
@@ -81,6 +119,68 @@ test("solution paper stays inside a mobile viewport", async ({ page }) => {
     path: "test-results/solution-paper-mobile.png",
     fullPage: true,
   });
+});
+
+test("legacy solution papers load with generated replay analytics", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "amc8-learning-state-v1",
+      JSON.stringify({
+        students: {
+          matt: {
+            solutionPapers: [
+              {
+                id: "legacy-paper",
+                studentId: "matt",
+                questionId: "ratio-01",
+                questionPrompt: "Legacy solution paper",
+                createdAt: "2026-06-11T12:00:00.000Z",
+                metrics: {
+                  durationSeconds: 60,
+                  activeSeconds: 1,
+                  strokeCount: 1,
+                  eraserStrokeCount: 0,
+                  undoCount: 0,
+                  pauseCount: 0,
+                  longestPauseSeconds: 0,
+                },
+                strokes: [
+                  {
+                    id: "legacy-stroke",
+                    tool: "pen",
+                    color: "#17372f",
+                    width: 3,
+                    startedAt: 50_000,
+                    endedAt: 51_000,
+                    points: [
+                      { x: 0.1, y: 0.1, t: 50_000 },
+                      { x: 0.2, y: 0.2, t: 51_000 },
+                    ],
+                  },
+                ],
+                analysis: {
+                  source: "local",
+                  summary: "Legacy local report.",
+                  approach: [],
+                  strengths: [],
+                  unclearPoints: [],
+                  errors: [],
+                  suggestions: [],
+                  notableIdea: null,
+                },
+              },
+            ],
+          },
+        },
+      }),
+    );
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "AI solution paper" }).click();
+
+  await expect(page.getByText("Legacy solution paper").first()).toBeVisible();
+  await expect(page.getByText("long stuck", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Very long pause at 00:50" })).toBeVisible();
 });
 
 test("Matt parent and admin views expose separate oversight", async ({ page }) => {

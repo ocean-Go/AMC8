@@ -120,14 +120,90 @@ export interface SolutionStroke {
   points: StrokePoint[];
 }
 
+export type PaperActionType = "undo" | "redo" | "clear";
+
+export interface PaperAction {
+  id: string;
+  type: PaperActionType;
+  timestamp: number;
+  targetStrokeId?: string;
+}
+
+export type ReplayMarkerType =
+  | "long_pause"
+  | "very_long_pause"
+  | "erase"
+  | "undo"
+  | "clear"
+  | "answer_written";
+
+export interface ReplayMarker {
+  id: string;
+  timestamp: number;
+  type: ReplayMarkerType;
+  label: string;
+  description?: string;
+}
+
+export interface RevisionMetrics {
+  eraseCount: number;
+  undoCount: number;
+  redoCount: number;
+  clearCount: number;
+  revisionCount: number;
+  hasRevisionCluster: boolean;
+}
+
+export type ProcessPattern =
+  | "smooth"
+  | "slow_start"
+  | "frequent_revision"
+  | "long_stuck"
+  | "minimal_work"
+  | "rushed"
+  | "unknown";
+
+export interface ThinkingReplaySummary {
+  totalTimeSeconds: number;
+  activeWritingSeconds: number;
+  idleTimeSeconds: number;
+  strokeCount: number;
+  pauseCount: number;
+  longPauseCount: number;
+  veryLongPauseCount: number;
+  longestPauseSeconds: number;
+  eraseCount: number;
+  undoCount: number;
+  redoCount: number;
+  clearCount: number;
+  revisionCount: number;
+  revisionClusterDetected: boolean;
+  processPattern: ProcessPattern;
+  observation: string;
+  suggestedNextAction: string;
+}
+
+export interface ThinkingReplayCoachContext extends ThinkingReplaySummary {
+  questionId: string;
+  questionPrompt: string;
+}
+
 export interface SolutionProcessMetrics {
   durationSeconds: number;
   activeSeconds: number;
+  idleSeconds: number;
   strokeCount: number;
   eraserStrokeCount: number;
   undoCount: number;
+  redoCount: number;
+  clearCount: number;
   pauseCount: number;
+  longPauseCount: number;
+  veryLongPauseCount: number;
   longestPauseSeconds: number;
+  revisionCount: number;
+  revisionClusterDetected: boolean;
+  firstStrokeDelaySeconds: number;
 }
 
 export interface SolutionAnalysis {
@@ -145,11 +221,22 @@ export interface SolutionPaperRecord {
   id: string;
   studentId: StudentId;
   questionId: string;
+  attemptId: string;
   questionPrompt: string;
   createdAt: string;
+  updatedAt: string;
   metrics: SolutionProcessMetrics;
   strokes: SolutionStroke[];
-  analysis: SolutionAnalysis;
+  actions: PaperAction[];
+  replayMarkers: ReplayMarker[];
+  thinkingReplaySummary: ThinkingReplaySummary;
+  analysis?: SolutionAnalysis;
+  analysisStatus:
+    | "not_analyzed"
+    | "local_analyzed"
+    | "vision_analyzing"
+    | "vision_analyzed"
+    | "vision_failed";
 }
 
 export interface StudentState {
@@ -158,6 +245,7 @@ export interface StudentState {
   mistakes: Mistake[];
   practiceAttempts: PracticeAttempt[];
   solutionPapers: SolutionPaperRecord[];
+  coachReplayContext?: ThinkingReplayCoachContext;
   readinessHistory: ReadinessHistoryEntry[];
 }
 

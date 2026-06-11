@@ -14,9 +14,11 @@ import type {
   AnswerChoice,
   PracticeAttempt,
   PracticeQuestion,
+  ThinkingReplayCoachContext,
 } from "@/lib/domain";
 
 interface CoachPanelProps {
+  replayContext?: ThinkingReplayCoachContext;
   onPracticeAttempt: (attempt: PracticeAttempt) => void;
   onIncorrect: (
     question: PracticeQuestion,
@@ -30,11 +32,19 @@ const choices: AnswerChoice[] = ["A", "B", "C", "D", "E"];
 const hintNames = ["Understand", "Tool", "Strategy", "Key step", "Full solution"];
 
 export function CoachPanel({
+  replayContext,
   onPracticeAttempt,
   onIncorrect,
   onMasteryGain,
 }: CoachPanelProps) {
-  const [questionIndex, setQuestionIndex] = useState(0);
+  const [questionIndex, setQuestionIndex] = useState(() => {
+    const replayQuestionIndex = replayContext
+      ? practiceQuestions.findIndex(
+          (question) => question.id === replayContext.questionId,
+        )
+      : -1;
+    return Math.max(0, replayQuestionIndex);
+  });
   const [selected, setSelected] = useState<AnswerChoice | null>(null);
   const [hintLevel, setHintLevel] = useState(0);
   const [submitted, setSubmitted] = useState(false);
@@ -95,11 +105,14 @@ export function CoachPanel({
   async function askCoach() {
     if (!prompt.trim() || status === "streaming" || status === "submitted") return;
     const requestedLevel = Math.max(1, Math.min(5, hintLevel || 1));
-    const contextualPrompt = [
+  const contextualPrompt = [
       "Student: Matt. Target: 20 correct on the 2027-01-22 AMC 8.",
       `Problem: ${question.prompt}`,
       `Choices: ${choices.map((choice) => `${choice}) ${question.choices[choice]}`).join("; ")}`,
       `Relevant tools: ${question.toolTags.join(", ")}`,
+      replayContext
+        ? `Thinking Replay context: ${JSON.stringify(replayContext)}`
+        : "Thinking Replay context: none.",
       `Hint level requested: ${requestedLevel} (${hintNames[requestedLevel - 1]}).`,
       `Student question: ${prompt}`,
       requestedLevel < 5
@@ -227,8 +240,23 @@ export function CoachPanel({
           </div>
           <div className="coach-target-note">
             <Sparkles size={16} />
-            Current AI guidance level:{" "}
-            <strong>{hintLevel || 1} - {hintNames[(hintLevel || 1) - 1]}</strong>
+            {replayContext ? (
+              <span>
+                Thinking Replay:{" "}
+                <strong>
+                  {replayContext.processPattern.replaceAll("_", " ")};{" "}
+                  {replayContext.pauseCount} long pauses;{" "}
+                  {replayContext.revisionCount} revisions
+                </strong>
+              </span>
+            ) : (
+              <span>
+                Current AI guidance level:{" "}
+                <strong>
+                  {hintLevel || 1} - {hintNames[(hintLevel || 1) - 1]}
+                </strong>
+              </span>
+            )}
           </div>
           <div className="chat-stream">
             {messages.length === 0 && (

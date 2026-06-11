@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { AppState, StudentState } from "@/lib/domain";
 import { createInitialState } from "@/lib/learning";
+import { normalizeSolutionPaperRecord } from "@/lib/solution-paper";
 
 const storageKey = "amc8-learning-state-v1";
 
@@ -23,7 +24,9 @@ function normalizeStudent(student?: Partial<StudentState>): StudentState {
       errorType: mistake.errorType ?? "knowledge_gap",
       toolTags: mistake.toolTags ?? [],
     })),
-    solutionPapers: student?.solutionPapers ?? [],
+    solutionPapers: (student?.solutionPapers ?? []).map(
+      normalizeSolutionPaperRecord,
+    ),
     readinessHistory: student?.readinessHistory ?? [],
   };
 }

@@ -49,16 +49,26 @@ more useful as Matt completes real mocks and coached practice.
 
 ## AI solution paper
 
-The student can select a practice problem, write a solution on a touch or
-mouse-enabled canvas, undo or erase strokes, replay the full process, and save
-the result to their personal history. The system records total time, active
-writing time, pauses, revisions, and stroke count.
+AI Solution Paper is a Thinking Replay system rather than a saved scratchpad.
+Matt starts the timer before writing, which allows the system to detect whether
+he became stuck before choosing a strategy.
 
-With `MINIMAX_API_KEY` configured, MiniMax M3 receives the final solution image
-and process metrics, then returns a structured review of the student's
-approach, unclear steps, likely errors, strengths, and next action. Without a
-key, the feature remains usable and returns an explicit process-only local
-review.
+Each saved paper includes:
+
+- Deterministic stroke replay with play, pause, restart, and 1x/2x/4x speed.
+- A draggable timeline with long-pause, very-long-pause, erase, undo, clear,
+  and save markers.
+- Active writing time, idle time, revision metrics, and pause metrics.
+- Rule-based process classification: smooth, slow start, frequent revision,
+  long stuck, minimal work, rushed, or unknown.
+- A short AMC8-focused next action that works without AI.
+- One-click transfer of the replay summary into AI Coach context.
+
+MiniMax Vision is an optional enhancement. When requested, it receives the
+final reconstructed page, question, correct answer, local replay summary, and
+marker summary. The interface labels handwriting analysis as Vision only after
+MiniMax succeeds. A failed or unavailable Vision request never removes the
+local process report.
 
 ## Verification
 

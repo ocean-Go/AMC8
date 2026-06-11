@@ -265,16 +265,30 @@ export function LearningSystem() {
           <SolutionPaperPanel
             studentId="matt"
             records={student.solutionPapers}
+            onAskCoach={(context) => {
+              updateStudent((current) => ({
+                ...current,
+                coachReplayContext: context,
+              }));
+              setView("coach");
+            }}
             onSave={(record) =>
               updateStudent((current) => ({
                 ...current,
-                solutionPapers: [record, ...current.solutionPapers],
+                solutionPapers: current.solutionPapers.some(
+                  (item) => item.id === record.id,
+                )
+                  ? current.solutionPapers.map((item) =>
+                      item.id === record.id ? record : item,
+                    )
+                  : [record, ...current.solutionPapers],
               }))
             }
           />
         )}
         {view === "coach" && (
           <CoachPanel
+            replayContext={student.coachReplayContext}
             onPracticeAttempt={(attempt: PracticeAttempt) =>
               updateStudent((current) => ({
                 ...current,

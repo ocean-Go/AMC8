@@ -9,16 +9,53 @@ import { createMiniMaxProvider } from "@/lib/minimax";
 
 const requestSchema = z.object({
   questionPrompt: z.string().min(1).max(2_000),
+  correctAnswer: z.string().optional(),
+  studentAnswer: z.string().optional(),
   imageDataUrl: z.string().startsWith("data:image/png;base64,"),
   metrics: z.object({
     durationSeconds: z.number().nonnegative(),
     activeSeconds: z.number().nonnegative(),
+    idleSeconds: z.number().nonnegative(),
     strokeCount: z.number().int().nonnegative(),
     eraserStrokeCount: z.number().int().nonnegative(),
     undoCount: z.number().int().nonnegative(),
+    redoCount: z.number().int().nonnegative(),
+    clearCount: z.number().int().nonnegative(),
     pauseCount: z.number().int().nonnegative(),
+    longPauseCount: z.number().int().nonnegative(),
+    veryLongPauseCount: z.number().int().nonnegative(),
     longestPauseSeconds: z.number().nonnegative(),
+    revisionCount: z.number().int().nonnegative(),
+    revisionClusterDetected: z.boolean(),
+    firstStrokeDelaySeconds: z.number().nonnegative(),
   }),
+  thinkingReplaySummary: z.object({
+    totalTimeSeconds: z.number().nonnegative(),
+    activeWritingSeconds: z.number().nonnegative(),
+    idleTimeSeconds: z.number().nonnegative(),
+    strokeCount: z.number().int().nonnegative(),
+    pauseCount: z.number().int().nonnegative(),
+    longPauseCount: z.number().int().nonnegative(),
+    veryLongPauseCount: z.number().int().nonnegative(),
+    longestPauseSeconds: z.number().nonnegative(),
+    eraseCount: z.number().int().nonnegative(),
+    undoCount: z.number().int().nonnegative(),
+    redoCount: z.number().int().nonnegative(),
+    clearCount: z.number().int().nonnegative(),
+    revisionCount: z.number().int().nonnegative(),
+    revisionClusterDetected: z.boolean(),
+    processPattern: z.string(),
+    observation: z.string(),
+    suggestedNextAction: z.string(),
+  }),
+  replayMarkers: z.array(
+    z.object({
+      timestamp: z.number().nonnegative(),
+      type: z.string(),
+      label: z.string(),
+      description: z.string().optional(),
+    }),
+  ),
 });
 
 const analysisSchema = z.object({
@@ -43,7 +80,15 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid solution paper payload." }, { status: 400 });
   }
 
-  const { questionPrompt, imageDataUrl, metrics } = parsed.data;
+  const {
+    questionPrompt,
+    correctAnswer,
+    studentAnswer,
+    imageDataUrl,
+    metrics,
+    thinkingReplaySummary,
+    replayMarkers,
+  } = parsed.data;
   const fallback = createLocalSolutionAnalysis(
     metrics as SolutionProcessMetrics,
   );
@@ -66,11 +111,15 @@ export async function POST(request: Request) {
               type: "text",
               text: [
                 `Problem: ${questionPrompt}`,
-                `Process metrics: ${JSON.stringify(metrics)}`,
-                "Analyze the final handwritten page and the process metrics.",
+                `Correct answer: ${correctAnswer ?? "not provided"}`,
+                `Student answer: ${studentAnswer ?? "not provided"}`,
+                `Thinking Replay summary: ${JSON.stringify(thinkingReplaySummary)}`,
+                `Timeline markers: ${JSON.stringify(replayMarkers)}`,
+                `Raw process metrics: ${JSON.stringify(metrics)}`,
+                "Analyze the final handwritten page together with the process timeline for Matt's 20/25 AMC8 target.",
                 "Return exactly this JSON shape:",
                 '{"summary":"...","approach":["..."],"strengths":["..."],"unclearPoints":["..."],"errors":["..."],"suggestions":["..."],"notableIdea":null}',
-                "Use short, child-friendly English. If the work is unreadable or incomplete, say so explicitly.",
+                "Use short, child-friendly English. Connect feedback to tool recognition, casework, enumeration, diagrams, calculation accuracy, time management, or independence. If handwriting is unreadable or incomplete, say so explicitly and do not invent content.",
               ].join("\n"),
             },
             {
