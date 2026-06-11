@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Brain,
+  CheckCircle2,
   Pause,
   Play,
   RefreshCcw,
   ScanSearch,
+  XCircle,
 } from "lucide-react";
 import { MessageResponse } from "@/components/ai-elements/message";
 import { practiceQuestions } from "@/data/practice-questions";
@@ -42,15 +44,32 @@ function drawStroke(
   context.lineCap = "round";
   context.lineJoin = "round";
   context.strokeStyle = stroke.tool === "eraser" ? "#ffffff" : stroke.color;
-  context.lineWidth = stroke.tool === "eraser" ? stroke.width * 3 : stroke.width;
-  context.beginPath();
-  stroke.points.forEach((point, index) => {
-    const x = point.x * width;
-    const y = point.y * height;
-    if (index === 0) context.moveTo(x, y);
-    else context.lineTo(x, y);
-  });
-  context.stroke();
+  if (stroke.points.length === 1) {
+    const point = stroke.points[0];
+    const pressure = point.pressure || 0.5;
+    const lineWidth =
+      stroke.tool === "eraser"
+        ? stroke.width * 3
+        : stroke.width * (0.65 + pressure * 0.9);
+    context.beginPath();
+    context.arc(point.x * width, point.y * height, lineWidth / 2, 0, Math.PI * 2);
+    context.fillStyle = context.strokeStyle;
+    context.fill();
+  } else {
+    for (let index = 1; index < stroke.points.length; index += 1) {
+      const previous = stroke.points[index - 1];
+      const point = stroke.points[index];
+      const pressure = ((previous.pressure || 0.5) + (point.pressure || 0.5)) / 2;
+      context.lineWidth =
+        stroke.tool === "eraser"
+          ? stroke.width * 3
+          : stroke.width * (0.65 + pressure * 0.9);
+      context.beginPath();
+      context.moveTo(previous.x * width, previous.y * height);
+      context.lineTo(point.x * width, point.y * height);
+      context.stroke();
+    }
+  }
   context.restore();
 }
 
@@ -108,6 +127,10 @@ export function ThinkingReplayPanel({
   const [playing, setPlaying] = useState(false);
   const totalTime = Math.max(0.1, record.thinkingReplaySummary.totalTimeSeconds);
   const summary = record.thinkingReplaySummary;
+  const activePhase = summary.phases.find(
+    (phase) =>
+      currentTime >= phase.startSeconds && currentTime <= phase.endSeconds,
+  );
 
   const paint = useCallback(
     (timestamp = currentTime) => {
@@ -176,6 +199,7 @@ export function ThinkingReplayPanel({
         body: JSON.stringify({
           questionPrompt: record.questionPrompt,
           correctAnswer: question?.answer,
+          studentAnswer: record.studentAnswer,
           imageDataUrl: canvas.toDataURL("image/png"),
           metrics: record.metrics,
           thinkingReplaySummary: record.thinkingReplaySummary,
@@ -211,6 +235,21 @@ export function ThinkingReplayPanel({
           {summary.processPattern.replaceAll("_", " ")}
         </span>
       </div>
+      {record.studentAnswer && (
+        <div
+          className={`saved-answer ${
+            record.answerCorrect ? "correct" : "incorrect"
+          }`}
+        >
+          {record.answerCorrect ? (
+            <CheckCircle2 size={16} />
+          ) : (
+            <XCircle size={16} />
+          )}
+          Matt selected {record.studentAnswer}:{" "}
+          {record.answerCorrect ? "Correct" : "Incorrect"}
+        </div>
+      )}
 
       <div className="thinking-replay-grid">
         <div>
@@ -278,6 +317,63 @@ export function ThinkingReplayPanel({
                   }`}
                   type="button"
                 />
+              ))}
+            </div>
+          </div>
+
+          <div className="phase-replay">
+            <div className="phase-replay-heading">
+              <strong>Thinking phases</strong>
+              <span>
+                {activePhase
+                  ? `${activePhase.phase} (${activePhase.confidence} confidence)`
+                  : "Move the replay to inspect a phase"}
+              </span>
+            </div>
+            <div className="phase-track" aria-label="Thinking phase timeline">
+              {summary.phases.map((phase) => (
+                <button
+                  aria-label={`${phase.phase}, ${Math.round(
+                    phase.durationSeconds,
+                  )} seconds, ${phase.confidence} confidence`}
+                  className={`phase-segment phase-${phase.phase} ${
+                    activePhase?.phase === phase.phase ? "active" : ""
+                  }`}
+                  key={phase.phase}
+                  onClick={() => {
+                    setPlaying(false);
+                    setCurrentTime(phase.startSeconds);
+                  }}
+                  style={{
+                    left: `${(phase.startSeconds / totalTime) * 100}%`,
+                    width: `${Math.max(
+                      2,
+                      (phase.durationSeconds / totalTime) * 100,
+                    )}%`,
+                  }}
+                  title={`${phase.phase}: ${phase.evidence}`}
+                  type="button"
+                >
+                  <span>{phase.phase}</span>
+                </button>
+              ))}
+            </div>
+            <div className="phase-cards">
+              {summary.phases.map((phase) => (
+                <button
+                  className={activePhase?.phase === phase.phase ? "active" : ""}
+                  key={phase.phase}
+                  onClick={() => {
+                    setPlaying(false);
+                    setCurrentTime(phase.startSeconds);
+                  }}
+                  type="button"
+                >
+                  <span>{phase.phase}</span>
+                  <strong>{formatTime(phase.durationSeconds)}</strong>
+                  <small>{phase.confidence} confidence</small>
+                  <p>{phase.commentary}</p>
+                </button>
               ))}
             </div>
           </div>
@@ -350,6 +446,40 @@ export function ThinkingReplayPanel({
             </p>
           )}
         </aside>
+      </div>
+
+      <div className="thinking-timeline-panel">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">Evidence-based commentary</p>
+            <h3>Thinking timeline</h3>
+          </div>
+          <span className="status-pill">Timing + actions</span>
+        </div>
+        <div className="thinking-timeline-list">
+          {summary.timeline.map((event) => (
+            <button
+              key={event.id}
+              onClick={() => {
+                setPlaying(false);
+                setCurrentTime(event.timestamp);
+              }}
+              type="button"
+            >
+              <strong>{formatTime(event.timestamp)}</strong>
+              <span className={`timeline-event-dot event-${event.type}`} />
+              <div>
+                <h4>{event.label}</h4>
+                <p>{event.commentary}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+        <p className="local-analysis-note">
+          Phase labels are deterministic timing inferences, not handwriting
+          recognition. AI Vision may refine the interpretation after it reads
+          the visible page successfully.
+        </p>
       </div>
 
       {record.analysisStatus === "vision_analyzed" &&

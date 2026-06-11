@@ -55,20 +55,27 @@ he became stuck before choosing a strategy.
 
 Each saved paper includes:
 
+- Multiple-choice answer selection with immediate correct/incorrect feedback.
 - Deterministic stroke replay with play, pause, restart, and 1x/2x/4x speed.
 - A draggable timeline with long-pause, very-long-pause, erase, undo, clear,
-  and save markers.
+  answer-check, and save markers.
 - Active writing time, idle time, revision metrics, and pause metrics.
 - Rule-based process classification: smooth, slow start, frequent revision,
   long stuck, minimal work, rushed, or unknown.
+- An evidence-based Think, Plan, Execute, Verify timeline with confidence labels.
 - A short AMC8-focused next action that works without AI.
 - One-click transfer of the replay summary into AI Coach context.
 
+Tablet and phone handwriting support includes pressure-sensitive pen width,
+coalesced pointer sampling, basic palm rejection, larger touch targets, three
+pen sizes, a full-screen focus mode, and a quick answer dock below the canvas.
+
 MiniMax Vision is an optional enhancement. When requested, it receives the
-final reconstructed page, question, correct answer, local replay summary, and
-marker summary. The interface labels handwriting analysis as Vision only after
-MiniMax succeeds. A failed or unavailable Vision request never removes the
-local process report.
+final reconstructed page, question, correct and selected answers, local replay
+summary, phase timeline, and marker summary. Local phase labels are timing
+inferences, not handwriting recognition. The interface labels handwriting
+analysis as Vision only after MiniMax succeeds. A failed or unavailable Vision
+request never removes the local process report.
 
 ## Verification
 

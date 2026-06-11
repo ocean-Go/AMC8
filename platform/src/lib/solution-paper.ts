@@ -6,7 +6,9 @@ import type {
   SolutionPaperRecord,
   SolutionProcessMetrics,
   SolutionStroke,
+  ThinkingPhase,
   ThinkingReplaySummary,
+  ThinkingTimelineEvent,
 } from "@/lib/domain";
 
 export const LONG_PAUSE_THRESHOLD_SECONDS = 15;
@@ -92,7 +94,11 @@ export function calculateRevisionMetrics(
     ...strokes
       .filter((stroke) => stroke.tool === "eraser")
       .map((stroke) => stroke.startedAt),
-    ...actions.map((action) => action.timestamp),
+    ...actions
+      .filter((action) =>
+        ["undo", "redo", "clear"].includes(action.type),
+      )
+      .map((action) => action.timestamp),
   ].sort((a, b) => a - b);
   const hasRevisionCluster = revisionTimes.some((start, index) => {
     const count = revisionTimes.filter(
@@ -149,6 +155,18 @@ export function createReplayMarkers(
 
   actions.forEach((action) => {
     if (action.type === "redo") return;
+    if (action.type === "answer_selected") {
+      markers.push({
+        id: `answer-${action.id}`,
+        timestamp: Math.round((action.timestamp / 1000) * 10) / 10,
+        type: "answer_written",
+        label: `Answer ${action.answerChoice ?? ""} - ${
+          action.isCorrect ? "Correct" : "Incorrect"
+        }`.trim(),
+        description: "Answer checked",
+      });
+      return;
+    }
     markers.push({
       id: `action-${action.id}`,
       timestamp: Math.round((action.timestamp / 1000) * 10) / 10,
@@ -157,14 +175,12 @@ export function createReplayMarkers(
     });
   });
 
-  if (strokes.length) {
-    markers.push({
-      id: "answer-written",
-      timestamp: totalTimeSeconds,
-      type: "answer_written",
-      label: "Paper saved",
-    });
-  }
+  markers.push({
+    id: "paper-saved",
+    timestamp: totalTimeSeconds,
+    type: "answer_written",
+    label: "Paper saved",
+  });
 
   return markers.sort((a, b) => a.timestamp - b.timestamp);
 }
@@ -228,6 +244,8 @@ export function calculateSolutionMetrics(
 
 export function createThinkingReplaySummary(
   metrics: SolutionProcessMetrics,
+  strokes: SolutionStroke[] = [],
+  actions: PaperAction[] = [],
 ): ThinkingReplaySummary {
   let processPattern: ThinkingReplaySummary["processPattern"] = "unknown";
   if (!metrics.durationSeconds || !metrics.strokeCount) {
@@ -287,6 +305,8 @@ export function createThinkingReplaySummary(
   const observation = metrics.revisionClusterDetected
     ? `${observations[processPattern]} Several revision actions occurred within a 20-second window.`
     : observations[processPattern];
+  const phases = createThinkingPhases(metrics, strokes, actions);
+  const timeline = createThinkingTimeline(metrics, phases, actions);
 
   return {
     totalTimeSeconds: metrics.durationSeconds,
@@ -304,9 +324,188 @@ export function createThinkingReplaySummary(
     revisionCount: metrics.revisionCount,
     revisionClusterDetected: metrics.revisionClusterDetected,
     processPattern,
+    phases,
+    timeline,
     observation,
     suggestedNextAction: nextActions[processPattern],
   };
+}
+
+export function createThinkingPhases(
+  metrics: SolutionProcessMetrics,
+  strokes: SolutionStroke[],
+  actions: PaperAction[],
+): ThinkingPhase[] {
+  const total = Math.max(0, metrics.durationSeconds);
+  if (!total) return [];
+
+  const ordered = [...strokes].sort((a, b) => a.startedAt - b.startedAt);
+  const firstStroke = Math.min(
+    total,
+    ordered.length ? ordered[0].startedAt / 1000 : total,
+  );
+  const lastStroke = Math.min(
+    total,
+    ordered.length ? ordered.at(-1)!.endedAt / 1000 : firstStroke,
+  );
+  const answerActions = actions
+    .filter((action) => action.type === "answer_selected")
+    .sort((a, b) => a.timestamp - b.timestamp);
+  const firstAnswer = answerActions.length
+    ? Math.min(total, answerActions[0].timestamp / 1000)
+    : null;
+  const workEnd = Math.max(firstStroke, firstAnswer ?? lastStroke);
+  const writtenWindow = Math.max(0, workEnd - firstStroke);
+  const planDuration =
+    writtenWindow > 0 ? Math.min(20, Math.max(2, writtenWindow * 0.2)) : 0;
+  const planEnd = Math.min(workEnd, firstStroke + planDuration);
+  const verifyStart = firstAnswer ?? lastStroke;
+
+  const phases: ThinkingPhase[] = [];
+  const addPhase = (
+    phase: ThinkingPhase["phase"],
+    startSeconds: number,
+    endSeconds: number,
+    confidence: ThinkingPhase["confidence"],
+    evidence: string,
+    commentary: string,
+  ) => {
+    const start = Math.max(0, Math.min(total, startSeconds));
+    const end = Math.max(start, Math.min(total, endSeconds));
+    if (end - start < 0.1) return;
+    phases.push({
+      phase,
+      startSeconds: start,
+      endSeconds: end,
+      durationSeconds: Math.round((end - start) * 10) / 10,
+      confidence,
+      evidence,
+      commentary,
+    });
+  };
+
+  addPhase(
+    "think",
+    0,
+    firstStroke,
+    "high",
+    `${Math.round(firstStroke)} seconds before the first stroke`,
+    firstStroke >= LONG_PAUSE_THRESHOLD_SECONDS
+      ? "Matt paused before writing. The starting strategy or tool may not have been clear yet."
+      : "Matt began writing quickly after starting the timer.",
+  );
+  addPhase(
+    "plan",
+    firstStroke,
+    planEnd,
+    "low",
+    "Early writing segment",
+    "This segment is treated as planning from timing only. Local analytics cannot identify the written method.",
+  );
+  addPhase(
+    "execute",
+    planEnd,
+    verifyStart,
+    "medium",
+    `${metrics.strokeCount} pen strokes and ${metrics.revisionCount} revision actions`,
+    metrics.revisionCount >= 5
+      ? "The main writing period included frequent revision, suggesting the plan changed during execution."
+      : "Most recorded writing occurred here with a relatively stable action pattern.",
+  );
+  addPhase(
+    "verify",
+    verifyStart,
+    total,
+    firstAnswer === null ? "low" : "high",
+    firstAnswer === null
+      ? "Time after the final stroke"
+      : `Answer checked at ${Math.round(firstAnswer)} seconds`,
+    firstAnswer === null
+      ? "This trailing time may include checking, but no answer-check event proves it."
+      : "Matt checked an answer and then had time to review or revise before saving.",
+  );
+
+  return phases;
+}
+
+export function createThinkingTimeline(
+  metrics: SolutionProcessMetrics,
+  phases: ThinkingPhase[],
+  actions: PaperAction[],
+): ThinkingTimelineEvent[] {
+  const events: ThinkingTimelineEvent[] = [
+    {
+      id: "timeline-start",
+      timestamp: 0,
+      type: "start",
+      label: "Start",
+      commentary: "Timer started before writing.",
+    },
+  ];
+
+  phases.forEach((phase) => {
+    events.push({
+      id: `phase-${phase.phase}`,
+      timestamp: phase.startSeconds,
+      type: "phase_change",
+      label: phase.phase[0].toUpperCase() + phase.phase.slice(1),
+      commentary: phase.commentary,
+    });
+  });
+
+  if (metrics.firstStrokeDelaySeconds >= LONG_PAUSE_THRESHOLD_SECONDS) {
+    events.push({
+      id: "timeline-start-pause",
+      timestamp: metrics.firstStrokeDelaySeconds,
+      type: "pause",
+      label:
+        metrics.firstStrokeDelaySeconds >= VERY_LONG_PAUSE_THRESHOLD_SECONDS
+          ? "Very long opening pause"
+          : "Long opening pause",
+      commentary:
+        "The delay before the first stroke may indicate difficulty selecting a starting strategy.",
+    });
+  }
+  if (metrics.revisionClusterDetected) {
+    const revisionActions = actions
+      .filter((action) => ["undo", "redo", "clear"].includes(action.type))
+      .sort((a, b) => a.timestamp - b.timestamp);
+    events.push({
+      id: "timeline-revision-cluster",
+      timestamp: (revisionActions[0]?.timestamp ?? 0) / 1000,
+      type: "revision",
+      label: "Revision cluster",
+      commentary:
+        "Several revisions happened close together, suggesting uncertainty about the current path.",
+    });
+  }
+  actions
+    .filter((action) => action.type === "answer_selected")
+    .forEach((action, index) => {
+      events.push({
+        id: `timeline-answer-${action.id}`,
+        timestamp: action.timestamp / 1000,
+        type: "answer",
+        label: `Answer ${action.answerChoice ?? ""} ${
+          action.isCorrect ? "correct" : "incorrect"
+        }`.trim(),
+        commentary: action.isCorrect
+          ? "Matt selected the correct option. Remaining time can be used for verification."
+          : "Matt selected an incorrect option and can use the replay to identify where the path changed.",
+      });
+      if (index > 0) {
+        events.at(-1)!.commentary += " This was a revised answer.";
+      }
+    });
+  events.push({
+    id: "timeline-submit",
+    timestamp: metrics.durationSeconds,
+    type: "submit",
+    label: "Submit",
+    commentary: "Solution Paper saved.",
+  });
+
+  return events.sort((a, b) => a.timestamp - b.timestamp);
 }
 
 export function createLocalSolutionAnalysis(
@@ -351,7 +550,14 @@ export function normalizeSolutionPaperRecord(
     record.metrics?.durationSeconds ?? 0,
   );
   const thinkingReplaySummary =
-    record.thinkingReplaySummary ?? createThinkingReplaySummary(metrics);
+    record.thinkingReplaySummary?.phases &&
+    record.thinkingReplaySummary?.timeline
+      ? record.thinkingReplaySummary
+      : createThinkingReplaySummary(metrics, record.strokes ?? [], actions);
+  const answerActions = actions
+    .filter((action) => action.type === "answer_selected")
+    .sort((a, b) => a.timestamp - b.timestamp);
+  const finalAnswerAction = answerActions.at(-1);
   const replayMarkers =
     record.replayMarkers?.length
       ? record.replayMarkers
@@ -369,6 +575,11 @@ export function normalizeSolutionPaperRecord(
     metrics,
     replayMarkers,
     thinkingReplaySummary,
+    studentAnswer: record.studentAnswer ?? finalAnswerAction?.answerChoice,
+    answerCorrect: record.answerCorrect ?? finalAnswerAction?.isCorrect,
+    answeredAtSeconds:
+      record.answeredAtSeconds ??
+      (finalAnswerAction ? finalAnswerAction.timestamp / 1000 : undefined),
     analysisStatus:
       record.analysisStatus ??
       (record.analysis?.source === "minimax"

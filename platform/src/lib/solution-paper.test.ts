@@ -80,6 +80,54 @@ describe("thinking replay metrics", () => {
     ]);
   });
 
+  it("tracks answer checks without counting them as revisions", () => {
+    const strokes = [
+      stroke("a", 12_000, 14_000),
+      stroke("b", 22_000, 24_000),
+      stroke("c", 32_000, 34_000),
+      stroke("d", 42_000, 44_000),
+    ];
+    const actions: PaperAction[] = [
+      {
+        id: "wrong-answer",
+        type: "answer_selected",
+        timestamp: 55_000,
+        answerChoice: "A",
+        isCorrect: false,
+      },
+      {
+        id: "correct-answer",
+        type: "answer_selected",
+        timestamp: 65_000,
+        answerChoice: "C",
+        isCorrect: true,
+      },
+    ];
+    const metrics = calculateSolutionMetrics(strokes, actions, 75);
+    const summary = createThinkingReplaySummary(metrics, strokes, actions);
+    const markers = createReplayMarkers(strokes, actions, 75);
+
+    expect(metrics.revisionCount).toBe(0);
+    expect(summary.phases.map((phase) => phase.phase)).toEqual([
+      "think",
+      "plan",
+      "execute",
+      "verify",
+    ]);
+    expect(summary.phases.find((phase) => phase.phase === "verify")?.confidence).toBe(
+      "high",
+    );
+    expect(summary.timeline.map((event) => event.label)).toContain(
+      "Answer A incorrect",
+    );
+    expect(summary.timeline.map((event) => event.label)).toContain(
+      "Answer C correct",
+    );
+    expect(markers.map((marker) => marker.label)).toContain(
+      "Answer C - Correct",
+    );
+  });
+
   it("reconstructs undo, redo, and clear deterministically", () => {
     const strokes = [
       stroke("a", 1_000, 2_000),

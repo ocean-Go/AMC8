@@ -62,13 +62,27 @@ test("solution paper records handwriting and produces a saved review", async ({ 
   await expect(page.getByText("2 pen strokes")).toBeVisible();
   await page.getByRole("button", { name: "Undo" }).click();
   await page.getByRole("button", { name: "Redo" }).click();
+  await page.getByRole("button", { name: "A 10" }).click();
+  await page.getByRole("button", { name: "Check answer" }).click();
+  await expect(
+    page.getByText("Incorrect. Review your work and try again."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "C 20" }).click();
+  await page.getByRole("button", { name: "Check answer" }).click();
+  await expect(page.getByText("Correct", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Finish & save replay" }).click();
   await expect(page.getByText("Thinking replay", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Process summary" })).toBeVisible();
-  await expect(page.getByText("Local analytics")).toBeVisible();
+  await expect(page.getByText("Local analytics", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Play replay" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Restart replay" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Undo at" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Answer C - Correct at" }),
+  ).toBeVisible();
+  await expect(page.getByText("Thinking phases")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Thinking timeline" })).toBeVisible();
+  await expect(page.getByText("Matt selected C: Correct")).toBeVisible();
   await page.getByRole("button", { name: "4x" }).click();
   await page.getByRole("button", { name: "Play replay" }).click();
   await expect(page.getByRole("button", { name: "Pause replay" })).toBeVisible();
@@ -115,10 +129,40 @@ test("solution paper stays inside a mobile viewport", async ({ page }) => {
   expect(selectBox!.x + selectBox!.width).toBeLessThanOrEqual(390);
   expect(canvasBox!.x + canvasBox!.width).toBeLessThanOrEqual(390);
 
+  await page.getByRole("button", { name: "Enter focus mode" }).click();
+  const focusCanvasBox = await canvas.boundingBox();
+  expect(focusCanvasBox).not.toBeNull();
+  expect(focusCanvasBox!.x + focusCanvasBox!.width).toBeLessThanOrEqual(390);
+  expect(focusCanvasBox!.y + focusCanvasBox!.height).toBeLessThanOrEqual(844);
+  await page.getByRole("button", { name: "Exit focus mode" }).click();
+
   await page.screenshot({
     path: "test-results/solution-paper-mobile.png",
     fullPage: true,
   });
+});
+
+test("solution paper supports a tablet handwriting workflow", async ({ page }) => {
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "AI solution paper" }).click();
+  await page.getByRole("button", { name: "Start solving" }).click();
+  await page.getByRole("button", { name: "Pen size 5" }).click();
+  await expect(page.getByRole("button", { name: "Pen size 5" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.getByRole("button", { name: "Enter focus mode" }).click();
+
+  const canvas = page.getByLabel("Digital solution paper");
+  const canvasBox = await canvas.boundingBox();
+  expect(canvasBox).not.toBeNull();
+  expect(canvasBox!.x + canvasBox!.width).toBeLessThanOrEqual(820);
+  expect(canvasBox!.y + canvasBox!.height).toBeLessThanOrEqual(1180);
+  await expect(page.getByLabel("Quick answer check")).toBeVisible();
+  await page.getByRole("button", { name: "Select answer C" }).click();
+  await page.getByRole("button", { name: "Check quick answer" }).click();
+  await page.getByRole("button", { name: "Exit focus mode" }).click();
 });
 
 test("legacy solution papers load with generated replay analytics", async ({ page }) => {

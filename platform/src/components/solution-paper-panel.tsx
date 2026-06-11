@@ -9,18 +9,23 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
+  CheckCircle2,
   CircleStop,
   Eraser,
+  Maximize2,
+  Minimize2,
   Pencil,
   Redo2,
   Save,
   Timer,
   Trash2,
   Undo2,
+  XCircle,
 } from "lucide-react";
 import { ThinkingReplayPanel } from "@/components/thinking-replay-panel";
 import { practiceQuestions } from "@/data/practice-questions";
 import type {
+  AnswerChoice,
   PaperAction,
   SolutionPaperRecord,
   SolutionStroke,
@@ -53,15 +58,32 @@ function drawStroke(
   context.lineCap = "round";
   context.lineJoin = "round";
   context.strokeStyle = stroke.tool === "eraser" ? "#ffffff" : stroke.color;
-  context.lineWidth = stroke.tool === "eraser" ? stroke.width * 3 : stroke.width;
-  context.beginPath();
-  stroke.points.forEach((point, index) => {
-    const x = point.x * width;
-    const y = point.y * height;
-    if (index === 0) context.moveTo(x, y);
-    else context.lineTo(x, y);
-  });
-  context.stroke();
+  if (stroke.points.length === 1) {
+    const point = stroke.points[0];
+    const pressure = point.pressure || 0.5;
+    const lineWidth =
+      stroke.tool === "eraser"
+        ? stroke.width * 3
+        : stroke.width * (0.65 + pressure * 0.9);
+    context.beginPath();
+    context.arc(point.x * width, point.y * height, lineWidth / 2, 0, Math.PI * 2);
+    context.fillStyle = context.strokeStyle;
+    context.fill();
+  } else {
+    for (let index = 1; index < stroke.points.length; index += 1) {
+      const previous = stroke.points[index - 1];
+      const point = stroke.points[index];
+      const pressure = ((previous.pressure || 0.5) + (point.pressure || 0.5)) / 2;
+      context.lineWidth =
+        stroke.tool === "eraser"
+          ? stroke.width * 3
+          : stroke.width * (0.65 + pressure * 0.9);
+      context.beginPath();
+      context.moveTo(previous.x * width, previous.y * height);
+      context.lineTo(point.x * width, point.y * height);
+      context.stroke();
+    }
+  }
   context.restore();
 }
 
@@ -96,14 +118,22 @@ export function SolutionPaperPanel({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const currentStrokeRef = useRef<SolutionStroke | null>(null);
   const sessionStartRef = useRef<number | null>(null);
+  const activePointerIdRef = useRef<number | null>(null);
+  const lastPenInputRef = useRef(0);
   const [questionId, setQuestionId] = useState(practiceQuestions[0].id);
   const [strokes, setStrokes] = useState<SolutionStroke[]>([]);
   const [actions, setActions] = useState<PaperAction[]>([]);
   const [redoStack, setRedoStack] = useState<string[]>([]);
   const [tool, setTool] = useState<"pen" | "eraser">("pen");
+  const [penWidth, setPenWidth] = useState<2 | 3 | 5>(3);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [isTiming, setIsTiming] = useState(false);
   const [finished, setFinished] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
+  const [selectedAnswer, setSelectedAnswer] = useState<AnswerChoice | null>(null);
+  const [answerResult, setAnswerResult] = useState<
+    "correct" | "incorrect" | null
+  >(null);
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(
     records[0]?.id ?? null,
   );
@@ -142,6 +172,15 @@ export function SolutionPaperPanel({
     return () => window.clearInterval(interval);
   }, [isTiming]);
 
+  useEffect(() => {
+    if (!focusMode) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [focusMode]);
+
   function startSolving() {
     if (isTiming || finished) return;
     sessionStartRef.current = Date.now();
@@ -155,24 +194,37 @@ export function SolutionPaperPanel({
       : Date.now() - sessionStartRef.current;
   }
 
-  function pointFromEvent(event: ReactPointerEvent<HTMLCanvasElement>) {
-    const rect = event.currentTarget.getBoundingClientRect();
+  function pointFromPointer(pointer: PointerEvent, canvas: HTMLCanvasElement) {
+    const rect = canvas.getBoundingClientRect();
     return {
-      x: (event.clientX - rect.left) / rect.width,
-      y: (event.clientY - rect.top) / rect.height,
+      x: Math.max(0, Math.min(1, (pointer.clientX - rect.left) / rect.width)),
+      y: Math.max(0, Math.min(1, (pointer.clientY - rect.top) / rect.height)),
       t: relativeTime(),
+      pressure:
+        pointer.pressure > 0
+          ? Math.max(0.1, Math.min(1, pointer.pressure))
+          : 0.5,
     };
   }
 
   function startStroke(event: ReactPointerEvent<HTMLCanvasElement>) {
-    if (!isTiming || finished) return;
+    if (!isTiming || finished || !event.isPrimary) return;
+    if (
+      event.pointerType === "touch" &&
+      Date.now() - lastPenInputRef.current < 1_200
+    ) {
+      return;
+    }
+    if (event.pointerType === "pen") lastPenInputRef.current = Date.now();
+    event.preventDefault();
+    activePointerIdRef.current = event.pointerId;
     event.currentTarget.setPointerCapture(event.pointerId);
-    const point = pointFromEvent(event);
+    const point = pointFromPointer(event.nativeEvent, event.currentTarget);
     currentStrokeRef.current = {
       id: crypto.randomUUID(),
       tool,
       color: "#17372f",
-      width: 3,
+      width: penWidth,
       startedAt: point.t,
       endedAt: point.t,
       points: [point],
@@ -182,31 +234,51 @@ export function SolutionPaperPanel({
   function continueStroke(event: ReactPointerEvent<HTMLCanvasElement>) {
     const stroke = currentStrokeRef.current;
     const canvas = canvasRef.current;
-    if (!stroke || !canvas) return;
-    const point = pointFromEvent(event);
-    const previous = stroke.points.at(-1);
-    stroke.points.push(point);
-    stroke.endedAt = point.t;
+    if (
+      !stroke ||
+      !canvas ||
+      activePointerIdRef.current !== event.pointerId
+    ) {
+      return;
+    }
+    event.preventDefault();
+    if (event.pointerType === "pen") lastPenInputRef.current = Date.now();
+    const pointerEvents =
+      event.nativeEvent.getCoalescedEvents?.() ?? [event.nativeEvent];
     const context = canvas.getContext("2d");
     const rect = canvas.getBoundingClientRect();
-    if (!context || !previous) return;
+    if (!context) return;
     context.save();
     context.lineCap = "round";
     context.lineJoin = "round";
     context.strokeStyle = stroke.tool === "eraser" ? "#ffffff" : stroke.color;
-    context.lineWidth = stroke.tool === "eraser" ? stroke.width * 3 : stroke.width;
-    context.beginPath();
-    context.moveTo(previous.x * rect.width, previous.y * rect.height);
-    context.lineTo(point.x * rect.width, point.y * rect.height);
-    context.stroke();
+    pointerEvents.forEach((pointer) => {
+      const point = pointFromPointer(pointer, canvas);
+      const previous = stroke.points.at(-1);
+      if (!previous) return;
+      stroke.points.push(point);
+      stroke.endedAt = point.t;
+      const pressure =
+        ((previous.pressure || 0.5) + (point.pressure || 0.5)) / 2;
+      context.lineWidth =
+        stroke.tool === "eraser"
+          ? stroke.width * 3
+          : stroke.width * (0.65 + pressure * 0.9);
+      context.beginPath();
+      context.moveTo(previous.x * rect.width, previous.y * rect.height);
+      context.lineTo(point.x * rect.width, point.y * rect.height);
+      context.stroke();
+    });
     context.restore();
   }
 
   function finishStroke(event: ReactPointerEvent<HTMLCanvasElement>) {
     const stroke = currentStrokeRef.current;
-    if (!stroke) return;
+    if (!stroke || activePointerIdRef.current !== event.pointerId) return;
+    event.preventDefault();
     stroke.endedAt = relativeTime();
     currentStrokeRef.current = null;
+    activePointerIdRef.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -216,6 +288,7 @@ export function SolutionPaperPanel({
 
   function resetPaper() {
     currentStrokeRef.current = null;
+    activePointerIdRef.current = null;
     sessionStartRef.current = null;
     setStrokes([]);
     setActions([]);
@@ -223,6 +296,8 @@ export function SolutionPaperPanel({
     setElapsedSeconds(0);
     setIsTiming(false);
     setFinished(false);
+    setSelectedAnswer(null);
+    setAnswerResult(null);
     if (canvasRef.current) paintCanvas(canvasRef.current, []);
   }
 
@@ -269,14 +344,50 @@ export function SolutionPaperPanel({
     setRedoStack([]);
   }
 
+  function selectAnswer(answer: AnswerChoice) {
+    if (!isTiming || finished) return;
+    setSelectedAnswer(answer);
+    setAnswerResult(null);
+  }
+
+  function checkAnswer() {
+    if (!selectedAnswer || !isTiming || finished) return;
+    const isCorrect = selectedAnswer === question.answer;
+    setAnswerResult(isCorrect ? "correct" : "incorrect");
+    setActions((current) => [
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        type: "answer_selected",
+        timestamp: relativeTime(),
+        answerChoice: selectedAnswer,
+        isCorrect,
+      },
+    ]);
+  }
+
   function finishAndSave() {
-    if (!strokes.length || sessionStartRef.current === null) return;
+    if (
+      !strokes.length ||
+      sessionStartRef.current === null ||
+      !selectedAnswer ||
+      !answerResult
+    ) {
+      return;
+    }
     const durationSeconds = Math.max(
       elapsedSeconds,
       Math.round((Date.now() - sessionStartRef.current) / 1000),
     );
     const metrics = calculateSolutionMetrics(strokes, actions, durationSeconds);
-    const thinkingReplaySummary = createThinkingReplaySummary(metrics);
+    const thinkingReplaySummary = createThinkingReplaySummary(
+      metrics,
+      strokes,
+      actions,
+    );
+    const answerAction = actions
+      .filter((action) => action.type === "answer_selected")
+      .at(-1);
     const now = new Date().toISOString();
     const id = crypto.randomUUID();
     const record: SolutionPaperRecord = {
@@ -285,6 +396,11 @@ export function SolutionPaperPanel({
       questionId: question.id,
       attemptId: id,
       questionPrompt: question.prompt,
+      studentAnswer: selectedAnswer,
+      answerCorrect: answerResult === "correct",
+      answeredAtSeconds: answerAction
+        ? answerAction.timestamp / 1000
+        : durationSeconds,
       createdAt: now,
       updatedAt: now,
       metrics,
@@ -333,16 +449,56 @@ export function SolutionPaperPanel({
           </select>
         </label>
         <h3>{question.prompt}</h3>
-        <div className="solution-choices">
-          {Object.entries(question.choices).map(([choice, value]) => (
-            <span key={choice}>
-              <strong>{choice}</strong> {value}
+        <div aria-label="Answer choices" className="solution-choices">
+          {(Object.entries(question.choices) as [AnswerChoice, string][]).map(
+            ([choice, value]) => (
+              <button
+                aria-pressed={selectedAnswer === choice}
+                className={[
+                  selectedAnswer === choice ? "selected" : "",
+                  selectedAnswer === choice && answerResult
+                    ? answerResult
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                disabled={!isTiming || finished}
+                key={choice}
+                onClick={() => selectAnswer(choice)}
+                type="button"
+              >
+                <strong>{choice}</strong> {value}
+              </button>
+            ),
+          )}
+        </div>
+        <div className="answer-check-row" aria-live="polite">
+          <button
+            className="secondary-button"
+            disabled={!selectedAnswer || !isTiming || finished}
+            onClick={checkAnswer}
+            type="button"
+          >
+            Check answer
+          </button>
+          {answerResult === "correct" && (
+            <span className="answer-result correct">
+              <CheckCircle2 size={16} /> Correct
             </span>
-          ))}
+          )}
+          {answerResult === "incorrect" && (
+            <span className="answer-result incorrect">
+              <XCircle size={16} /> Incorrect. Review your work and try again.
+            </span>
+          )}
         </div>
       </section>
 
-      <section className="panel solution-workspace thinking-workspace">
+      <section
+        className={`panel solution-workspace thinking-workspace ${
+          focusMode ? "focus-mode" : ""
+        }`}
+      >
         <div className="solution-toolbar">
           <div className="tool-group" aria-label="Drawing tools">
             <button
@@ -362,6 +518,21 @@ export function SolutionPaperPanel({
               <Eraser size={16} /> Eraser
             </button>
           </div>
+          <div className="pen-width-group" aria-label="Pen size">
+            {([2, 3, 5] as const).map((width) => (
+              <button
+                aria-label={`Pen size ${width}`}
+                aria-pressed={penWidth === width}
+                className={penWidth === width ? "active" : ""}
+                disabled={!isTiming || finished}
+                key={width}
+                onClick={() => setPenWidth(width)}
+                type="button"
+              >
+                <span style={{ height: width, width: width * 4 }} />
+              </button>
+            ))}
+          </div>
           <div className="solution-timer" aria-label="Solution time">
             {isTiming ? <CircleStop size={15} /> : <Timer size={15} />}
             {formatTime(elapsedSeconds)}
@@ -375,6 +546,14 @@ export function SolutionPaperPanel({
             </button>
             <button disabled={!visibleStrokes.length || finished} onClick={clearCanvas} type="button">
               <Trash2 size={16} /> Clear
+            </button>
+            <button
+              aria-label={focusMode ? "Exit focus mode" : "Enter focus mode"}
+              onClick={() => setFocusMode((value) => !value)}
+              type="button"
+            >
+              {focusMode ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+              {focusMode ? "Exit" : "Focus"}
             </button>
           </div>
         </div>
@@ -404,6 +583,48 @@ export function SolutionPaperPanel({
           <span>{strokes.filter((stroke) => stroke.tool === "pen").length} pen strokes</span>
           <span>{strokes.filter((stroke) => stroke.tool === "eraser").length} erase actions</span>
           <span>{actions.filter((action) => action.type === "undo").length} undo actions</span>
+          <div aria-label="Quick answer check" className="quick-answer-dock">
+            {(["A", "B", "C", "D", "E"] as const).map((choice) => (
+              <button
+                aria-label={`Select answer ${choice}`}
+                aria-pressed={selectedAnswer === choice}
+                className={[
+                  selectedAnswer === choice ? "selected" : "",
+                  selectedAnswer === choice && answerResult
+                    ? answerResult
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                disabled={!isTiming || finished}
+                key={choice}
+                onClick={() => selectAnswer(choice)}
+                type="button"
+              >
+                {choice}
+              </button>
+            ))}
+            <button
+              aria-label="Check quick answer"
+              className="check"
+              disabled={!selectedAnswer || !isTiming || finished}
+              onClick={checkAnswer}
+              type="button"
+            >
+              {answerResult === "correct" ? (
+                <CheckCircle2 size={16} />
+              ) : answerResult === "incorrect" ? (
+                <XCircle size={16} />
+              ) : (
+                "Check"
+              )}
+            </button>
+          </div>
+          {!answerResult && isTiming && (
+            <span className="save-requirement">
+              Select and check an answer before saving.
+            </span>
+          )}
           {finished ? (
             <button className="secondary-button" onClick={resetPaper} type="button">
               New paper
@@ -411,7 +632,7 @@ export function SolutionPaperPanel({
           ) : (
             <button
               className="primary-button"
-              disabled={!strokes.length || !isTiming}
+              disabled={!strokes.length || !isTiming || !answerResult}
               onClick={finishAndSave}
               type="button"
             >
@@ -423,6 +644,7 @@ export function SolutionPaperPanel({
 
       {selectedRecord && (
         <ThinkingReplayPanel
+          key={selectedRecord.id}
           onAskCoach={onAskCoach}
           onUpdate={onSave}
           record={selectedRecord}

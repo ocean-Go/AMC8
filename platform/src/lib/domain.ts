@@ -108,6 +108,7 @@ export interface StrokePoint {
   x: number;
   y: number;
   t: number;
+  pressure?: number;
 }
 
 export interface SolutionStroke {
@@ -120,13 +121,15 @@ export interface SolutionStroke {
   points: StrokePoint[];
 }
 
-export type PaperActionType = "undo" | "redo" | "clear";
+export type PaperActionType = "undo" | "redo" | "clear" | "answer_selected";
 
 export interface PaperAction {
   id: string;
   type: PaperActionType;
   timestamp: number;
   targetStrokeId?: string;
+  answerChoice?: AnswerChoice;
+  isCorrect?: boolean;
 }
 
 export type ReplayMarkerType =
@@ -163,6 +166,32 @@ export type ProcessPattern =
   | "rushed"
   | "unknown";
 
+export type ThinkingPhaseType = "think" | "plan" | "execute" | "verify";
+
+export interface ThinkingPhase {
+  phase: ThinkingPhaseType;
+  startSeconds: number;
+  endSeconds: number;
+  durationSeconds: number;
+  confidence: "low" | "medium" | "high";
+  evidence: string;
+  commentary: string;
+}
+
+export interface ThinkingTimelineEvent {
+  id: string;
+  timestamp: number;
+  type:
+    | "start"
+    | "phase_change"
+    | "pause"
+    | "revision"
+    | "answer"
+    | "submit";
+  label: string;
+  commentary: string;
+}
+
 export interface ThinkingReplaySummary {
   totalTimeSeconds: number;
   activeWritingSeconds: number;
@@ -179,6 +208,8 @@ export interface ThinkingReplaySummary {
   revisionCount: number;
   revisionClusterDetected: boolean;
   processPattern: ProcessPattern;
+  phases: ThinkingPhase[];
+  timeline: ThinkingTimelineEvent[];
   observation: string;
   suggestedNextAction: string;
 }
@@ -223,6 +254,9 @@ export interface SolutionPaperRecord {
   questionId: string;
   attemptId: string;
   questionPrompt: string;
+  studentAnswer?: AnswerChoice;
+  answerCorrect?: boolean;
+  answeredAtSeconds?: number;
   createdAt: string;
   updatedAt: string;
   metrics: SolutionProcessMetrics;

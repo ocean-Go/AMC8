@@ -319,6 +319,55 @@ Security audit:
   not applied. Track the patched upstream Next.js release and upgrade normally;
   do not use `npm audit fix --force` for this finding.
 
+## 2026-06-12: Thinking Replay diagnostic upgrade
+
+Scope boundary:
+
+- Changed only AI Solution Paper, Thinking Replay, its Vision request, tests,
+  and documentation.
+- Did not change mocks, knowledge, toolbox, mistake book, readiness, storage,
+  user model, or deployment architecture.
+
+Answer evidence:
+
+- Matt can select A-E and receive an immediate `Correct` or `Incorrect`
+  judgment before saving.
+- Every checked answer is a timestamped `answer_selected` action.
+- Answer checks appear in replay markers and the Thinking Timeline without
+  being counted as revision actions.
+- The final selected answer and correctness are stored on the paper and sent
+  to MiniMax Vision as server-side context.
+
+Handwriting experience:
+
+- Added pressure-sensitive stroke width and browser coalesced pointer events
+  for smoother pen input.
+- Added basic pen-first palm rejection, three pen widths, 44-48 pixel touch
+  targets, full-screen focus mode, and a compact answer dock below the canvas.
+- Tablet and phone layouts keep the focused canvas and answer controls inside
+  the viewport.
+
+Thinking interpretation:
+
+- Added deterministic Think, Plan, Execute, and Verify phase intervals with
+  confidence, evidence, duration, and short commentary.
+- Added an event-based Thinking Timeline covering start, phase changes,
+  pauses, revision clusters, checked answers, and submit.
+- Local phase detection uses timing and actions only. It does not claim to
+  identify equations, diagrams, casework, or handwriting content.
+- MiniMax Vision receives the phase and event timeline but is explicitly told
+  to use the visible image for semantic claims.
+
+Compatibility and acceptance:
+
+- Existing saved papers regenerate missing phase and timeline data on read.
+- ESLint passed.
+- Vitest: 11 tests passed.
+- Next.js production build passed.
+- Playwright covers answer correction, answer markers, phase timeline, phone
+  focus mode, tablet pen controls, legacy migration, and the existing complete
+  learning flow.
+
 ## Known limitations
 
 - 2026 answer key still requires source verification.
