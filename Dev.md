@@ -230,6 +230,17 @@ Current boundary:
 - Storage remains browser-local. Supabase is deferred until several weeks of
   real product behavior have been collected.
 
+Release acceptance:
+
+- Commit: `ce00dc1` (`Upgrade to Matt 2027 target training`).
+- ESLint: passed.
+- Vitest: 7 tests passed.
+- Next.js production build: passed.
+- Playwright Chromium: 4 end-to-end tests passed.
+- Production deployment reached Vercel `READY`.
+- A 390x844 production smoke test confirmed only Matt, Parent, and Admin
+  workspaces, active MiniMax configuration, and no browser console errors.
+
 Security audit:
 
 - `npm audit --omit=dev` reports two moderate findings in the PostCSS version
