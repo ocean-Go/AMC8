@@ -1,0 +1,13 @@
+# Local source materials and working extracts
+/Material/
+/amc8-markdown/
+/Math/
+
+# Local tooling
+/.agents/
+/.codex/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+*.log
