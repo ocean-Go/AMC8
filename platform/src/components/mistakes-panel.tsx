@@ -1,14 +1,31 @@
 "use client";
 
 import { Check, RotateCcw } from "lucide-react";
-import type { Mistake } from "@/lib/domain";
+import type { ErrorType, Mistake } from "@/lib/domain";
 
 interface MistakesPanelProps {
   mistakes: Mistake[];
   onReview: (mistakeId: string) => void;
+  onErrorTypeChange: (mistakeId: string, errorType: ErrorType) => void;
 }
 
-export function MistakesPanel({ mistakes, onReview }: MistakesPanelProps) {
+const errorTypes: ErrorType[] = [
+  "calculation_error",
+  "misreading",
+  "knowledge_gap",
+  "strategy_gap",
+  "time_pressure",
+  "diagram_error",
+  "careless_error",
+  "guessing",
+  "incomplete_reasoning",
+];
+
+export function MistakesPanel({
+  mistakes,
+  onReview,
+  onErrorTypeChange,
+}: MistakesPanelProps) {
   return (
     <div className="space-y-6">
       <header className="page-heading">
@@ -44,6 +61,25 @@ export function MistakesPanel({ mistakes, onReview }: MistakesPanelProps) {
                     <p>
                       Selected {mistake.selected}; correct answer {mistake.correct}.
                     </p>
+                    <label className="error-type-field">
+                      Error diagnosis
+                      <select
+                        aria-label={`Error type for ${mistake.questionRef}`}
+                        onChange={(event) =>
+                          onErrorTypeChange(
+                            mistake.id,
+                            event.target.value as ErrorType,
+                          )
+                        }
+                        value={mistake.errorType}
+                      >
+                        {errorTypes.map((type) => (
+                          <option key={type} value={type}>
+                            {type.replaceAll("_", " ")}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                   </div>
                   <button
                     className="secondary-button"

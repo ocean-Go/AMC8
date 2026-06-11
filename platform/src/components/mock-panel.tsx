@@ -87,11 +87,12 @@ export function MockPanel({
       <header className="page-heading">
         <div>
           <p className="eyebrow">Past contest simulator</p>
-          <h2>25 questions · 40 minutes</h2>
+          <h2>25 questions - 40 minutes</h2>
         </div>
         <p>
           Open the official-format PDF, record answers here, then submit for
-          automatic scoring where a verified answer key is available.
+          automatic scoring. Matt&apos;s official target is 20/25; the training
+          target is 21-22/25.
         </p>
       </header>
 
@@ -182,7 +183,12 @@ export function MockPanel({
               ) : (
                 <>
                   <strong>{result}/25</strong>
-                  <span>{Math.round((result / 25) * 100)}% correct</span>
+                  <span>
+                    {Math.round((result / 25) * 100)}% correct -{" "}
+                    {result >= 20
+                      ? "target reached"
+                      : `${20 - result} more needed for 20`}
+                  </span>
                 </>
               )}
             </div>

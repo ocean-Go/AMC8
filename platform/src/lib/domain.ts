@@ -1,6 +1,35 @@
-export type StudentId = "matt" | "chris";
+export type StudentId = "matt";
 export type AppRole = StudentId | "parent" | "admin";
 export type AnswerChoice = "A" | "B" | "C" | "D" | "E";
+export type ErrorType =
+  | "calculation_error"
+  | "misreading"
+  | "knowledge_gap"
+  | "strategy_gap"
+  | "time_pressure"
+  | "diagram_error"
+  | "careless_error"
+  | "guessing"
+  | "incomplete_reasoning";
+export type ProblemSolvingTool =
+  | "parity"
+  | "divisibility"
+  | "modular_arithmetic"
+  | "enumeration"
+  | "casework"
+  | "construction"
+  | "contradiction"
+  | "extreme_principle"
+  | "pigeonhole"
+  | "invariant"
+  | "symmetry"
+  | "recursion"
+  | "coordinate_method"
+  | "area_method"
+  | "complement"
+  | "inclusion_exclusion"
+  | "working_backwards"
+  | "pattern_recognition";
 export type KnowledgeDomain =
   | "Arithmetic"
   | "Number Theory"
@@ -36,6 +65,8 @@ export interface PracticeQuestion {
   hint: string;
   explanation: string;
   difficulty: 1 | 2 | 3 | 4 | 5;
+  toolTags: ProblemSolvingTool[];
+  hintLadder: [string, string, string, string, string];
 }
 
 export interface MockAttempt {
@@ -59,14 +90,17 @@ export interface Mistake {
   createdAt: string;
   nextReviewAt: string;
   reviewCount: number;
+  errorType: ErrorType;
+  toolTags: ProblemSolvingTool[];
 }
 
-export interface ExperimentEvent {
+export interface PracticeAttempt {
   id: string;
-  studentId: StudentId;
-  variant: "A" | "B";
-  name: "session_started" | "hint_used" | "answer_submitted" | "session_completed";
-  correct?: boolean;
+  questionId: string;
+  correct: boolean;
+  selected: AnswerChoice;
+  hintLevelUsed: number;
+  toolTags: ProblemSolvingTool[];
   createdAt: string;
 }
 
@@ -122,10 +156,46 @@ export interface StudentState {
   mastery: Record<string, number>;
   attempts: MockAttempt[];
   mistakes: Mistake[];
-  experimentEvents: ExperimentEvent[];
+  practiceAttempts: PracticeAttempt[];
   solutionPapers: SolutionPaperRecord[];
+  readinessHistory: ReadinessHistoryEntry[];
 }
 
 export interface AppState {
-  students: Record<StudentId, StudentState>;
+  student: StudentState;
+}
+
+export interface MattTrainingConfig {
+  studentId: "matt";
+  studentName: "Matt";
+  targetExamDate: "2027-01-22";
+  targetCorrectAnswers: 20;
+  practiceTargetLow: 21;
+  practiceTargetHigh: 22;
+  totalQuestions: 25;
+  targetAccuracy: 0.8;
+  targetReadinessScore: 85;
+}
+
+export interface MattReadinessScore {
+  readinessScore: number;
+  predictedCorrectRange: { low: number; high: number };
+  targetCorrectAnswers: 20;
+  gapToTarget: number;
+  components: {
+    knowledgeMastery: number;
+    toolMastery: number;
+    accuracy: number;
+    speed: number;
+    independence: number;
+    reviewDiscipline: number;
+  };
+  updatedAt: string;
+}
+
+export interface ReadinessHistoryEntry {
+  readinessScore: number;
+  predictedCorrectLow: number;
+  predictedCorrectHigh: number;
+  recordedAt: string;
 }

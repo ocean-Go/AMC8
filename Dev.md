@@ -2,10 +2,11 @@
 
 ## Objective
 
-Deliver a usable learning system for Matt and Chris covering knowledge study,
+Deliver a usable single-user learning system for Matt covering knowledge study,
 past-paper mock exams, AI-assisted problem solving, mistake review, and a
-source-linked contest library. Preserve a reproducible record of decisions,
-quality checks, and acceptance results.
+source-linked contest library, with a target of 20 correct answers on the
+January 22, 2027 AMC 8. Preserve a reproducible record of decisions, quality
+checks, and acceptance results.
 
 ## 2026-06-11: Source audit
 
@@ -57,7 +58,7 @@ Acceptance:
 - A scored mock records attempt time, answers, score, and mistakes.
 - Refreshing the browser restores local progress.
 
-## Phase 3: AI and A/B experiment
+## Phase 3: AI and A/B experiment (historical, later retired)
 
 Status: complete for MVP.
 
@@ -104,7 +105,7 @@ Unit coverage includes:
 - Exact contest scoring and unverified-contest behavior.
 - Review interval progression.
 - Mastery averaging.
-- Opposite A/B assignment and weekly crossover.
+- Readiness weighting, tool mastery, and predicted-score range.
 
 Browser acceptance includes:
 
@@ -116,7 +117,7 @@ Final results:
 
 - Material import: 27 PDFs, 26 validated answer keys.
 - ESLint: passed.
-- Vitest: 8 tests passed.
+- Vitest: 7 tests passed.
 - Next.js production build: passed.
 - Playwright Chromium: 4 end-to-end tests passed.
 - Browser acceptance runs against an isolated production server on
@@ -181,6 +182,53 @@ Release:
   see the key, and `Local coaching only` when it cannot.
 - The text Coach is intentionally not labeled `MiniMax vision`; that label is
   reserved for solution-paper image analysis.
+
+## 2026-06-11: Matt single-user target upgrade
+
+Product target:
+
+- Student: Matt.
+- Exam date: January 22, 2027.
+- Official target: 20/25.
+- Internal practice target: 21-22/25.
+- Target readiness: 85/100.
+
+Architecture changes:
+
+- Replaced the active multi-student state with one `state.student` record.
+- Added automatic migration from the legacy `students.matt` browser record.
+- Removed Chris, student switching, A/B assignment, crossover telemetry, and
+  comparison UI from the active product.
+- Parent View now reports only Matt's progress.
+- Added JSON backup export for all Matt training records.
+
+Training intelligence:
+
+- Added weighted Readiness Score: knowledge 25%, toolbox 25%, accuracy 20%,
+  speed 15%, independence 10%, and review discipline 5%.
+- Added predicted correct range, gap to 20, exam countdown, and readiness
+  history.
+- Added problem-solving tool tags and mastery derived from correctness and hint
+  dependence.
+- Added editable error diagnosis to each mistake and parent error distribution.
+- Added a Matt-focused daily diagnosis card.
+
+AI Coach:
+
+- Replaced the A/B mode with a five-level ladder: Understand, Tool, Strategy,
+  Key Step, Full Solution.
+- Full answers are prohibited below level five in both UI copy and the MiniMax
+  system instruction.
+- Practice attempts record correctness, maximum hint level, and tool tags.
+- Hint use reduces independence and tool-mastery scores.
+
+Current boundary:
+
+- Full Mock remains the only mock type; Mini Mock and Weakness Mock are P1.
+- Readiness is a transparent directional heuristic, not a validated score
+  prediction model.
+- Storage remains browser-local. Supabase is deferred until several weeks of
+  real product behavior have been collected.
 
 Security audit:
 

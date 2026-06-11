@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { Contest } from "@/lib/domain";
+import { knowledgeTopics } from "@/data/knowledge";
 import {
   averageMastery,
+  calculateReadiness,
   emptyStudentState,
-  getExperimentVariant,
   nextReviewDate,
   scoreContest,
 } from "@/lib/learning";
@@ -39,23 +40,36 @@ describe("learning schedule", () => {
   it("averages recorded topic mastery", () => {
     const state = emptyStudentState();
     state.mastery = { ratios: 80, circles: 40 };
-    expect(averageMastery(state)).toBe(60);
+    expect(averageMastery(state)).toBe(5);
   });
 });
 
-describe("A/B crossover", () => {
-  it("assigns opposite variants to Matt and Chris", () => {
-    const date = new Date("2026-06-11T12:00:00.000Z");
-    expect(getExperimentVariant("matt", date)).not.toBe(
-      getExperimentVariant("chris", date),
+describe("Matt readiness", () => {
+  it("combines knowledge, tools, accuracy, speed, independence, and review", () => {
+    const state = emptyStudentState();
+    state.mastery = Object.fromEntries(
+      knowledgeTopics.map((topic) => [topic.id, 80]),
     );
-  });
+    state.practiceAttempts = [
+      {
+        id: "practice-1",
+        questionId: "counting-01",
+        correct: true,
+        selected: "C",
+        hintLevelUsed: 0,
+        toolTags: ["enumeration"],
+        createdAt: "2026-06-11T12:00:00.000Z",
+      },
+    ];
 
-  it("flips each student's variant on the following week", () => {
-    const weekOne = new Date("2026-06-11T12:00:00.000Z");
-    const weekTwo = new Date("2026-06-18T12:00:00.000Z");
-    expect(getExperimentVariant("matt", weekOne)).not.toBe(
-      getExperimentVariant("matt", weekTwo),
+    const result = calculateReadiness(
+      state,
+      new Date("2026-06-11T12:00:00.000Z"),
     );
+    expect(result.readinessScore).toBe(75);
+    expect(result.components.knowledgeMastery).toBe(80);
+    expect(result.components.toolMastery).toBe(100);
+    expect(result.predictedCorrectRange).toEqual({ low: 16, high: 19 });
+    expect(result.gapToTarget).toBe(1);
   });
 });

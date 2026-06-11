@@ -1,50 +1,103 @@
 "use client";
 
-import { BookOpenCheck, BrainCircuit, Clock3, Target } from "lucide-react";
+import {
+  BookOpenCheck,
+  BrainCircuit,
+  CalendarDays,
+  Gauge,
+  Target,
+  TrendingUp,
+} from "lucide-react";
 import { knowledgeTopics } from "@/data/knowledge";
-import type { StudentId, StudentState } from "@/lib/domain";
-import { averageMastery, getExperimentVariant } from "@/lib/learning";
+import type { StudentState } from "@/lib/domain";
+import {
+  calculateReadiness,
+  daysUntilExam,
+  errorDistribution,
+  mattTrainingConfig,
+  toolMasteryScores,
+} from "@/lib/learning";
 
 interface DashboardPanelProps {
-  studentId: StudentId;
   student: StudentState;
   onNavigate: (view: string) => void;
 }
 
-export function DashboardPanel({
-  studentId,
-  student,
-  onNavigate,
-}: DashboardPanelProps) {
-  const mastery = averageMastery(student);
+const componentLabels = {
+  knowledgeMastery: "Knowledge",
+  toolMastery: "Toolbox",
+  accuracy: "Accuracy",
+  speed: "Speed",
+  independence: "Independence",
+  reviewDiscipline: "Review",
+};
+
+export function DashboardPanel({ student, onNavigate }: DashboardPanelProps) {
+  const readiness = calculateReadiness(student);
+  const hasBaseline =
+    student.attempts.some((attempt) => attempt.score !== null) ||
+    student.practiceAttempts.length >= 5 ||
+    Object.values(student.mastery).some((value) => value > 0);
+  const days = daysUntilExam();
   const due = student.mistakes.filter(
     (mistake) => new Date(mistake.nextReviewAt) <= new Date(),
   ).length;
-  const variant = getExperimentVariant(studentId);
-  const completedTopics = knowledgeTopics.filter(
-    (topic) => (student.mastery[topic.id] ?? 0) >= 80,
-  ).length;
+  const weakestTopic = [...knowledgeTopics].sort(
+    (a, b) => (student.mastery[a.id] ?? 0) - (student.mastery[b.id] ?? 0),
+  )[0];
+  const weakestTool = toolMasteryScores(student).sort(
+    (a, b) => a.masteryScore - b.masteryScore,
+  )[0];
+  const mainError = errorDistribution(student)[0];
+  const focus =
+    !hasBaseline
+      ? "Complete a baseline mock"
+      : due > 0
+      ? `Review ${due} due mistake${due === 1 ? "" : "s"}`
+      : weakestTool
+        ? `Train ${weakestTool.tool.replaceAll("_", " ")}`
+        : `Build ${weakestTopic.title}`;
 
   const metrics = [
-    { label: "Knowledge mastery", value: `${mastery}%`, icon: BrainCircuit },
-    { label: "Topics mastered", value: `${completedTopics}/25`, icon: Target },
-    { label: "Mock attempts", value: String(student.attempts.length), icon: Clock3 },
-    { label: "Reviews due", value: String(due), icon: BookOpenCheck },
+    {
+      label: "Readiness score",
+      value: `${readiness.readinessScore}/100`,
+      icon: Gauge,
+    },
+    {
+      label: "Predicted correct",
+      value: hasBaseline
+        ? `${readiness.predictedCorrectRange.low}-${readiness.predictedCorrectRange.high}`
+        : "—",
+      icon: TrendingUp,
+    },
+    {
+      label: "Gap to 20",
+      value: hasBaseline ? String(readiness.gapToTarget) : "—",
+      icon: Target,
+    },
+    { label: "Days to exam", value: String(days), icon: CalendarDays },
   ];
 
   return (
     <div className="space-y-6">
-      <section className="hero-card">
+      <section className="hero-card target-hero">
         <div>
-          <p className="eyebrow">Today&apos;s mission</p>
-          <h2>Build one strong idea, then test it under time.</h2>
+          <p className="eyebrow">Matt&apos;s 2027 AMC 8 mission</p>
+          <h2>Reach 20 correct answers by January 22, 2027.</h2>
           <p>
-            Complete a focused lesson, solve one coached problem, and finish a
-            10-minute true-contest sprint.
+            Practice target: {mattTrainingConfig.practiceTargetLow}-
+            {mattTrainingConfig.practiceTargetHigh}/25. Today&apos;s best next move:
+            {" "}<strong>{focus}</strong>.
           </p>
         </div>
-        <button className="primary-button" onClick={() => onNavigate("learn")}>
-          Start learning
+        <button
+          className="primary-button"
+          onClick={() =>
+            onNavigate(!hasBaseline ? "mock" : due > 0 ? "mistakes" : "coach")
+          }
+        >
+          Start today&apos;s training
         </button>
       </section>
 
@@ -58,56 +111,91 @@ export function DashboardPanel({
         ))}
       </section>
 
-      <section className="grid gap-5 lg:grid-cols-[1.35fr_1fr]">
-        <article className="panel">
+      <section className="readiness-layout">
+        <article className="panel readiness-card">
           <div className="panel-heading">
             <div>
-              <p className="eyebrow">Learning path</p>
-              <h3>Six-domain coverage</h3>
+              <p className="eyebrow">AMC 8 readiness</p>
+              <h3>What is holding back the next correct answer?</h3>
             </div>
-            <span className="status-pill">{mastery}% overall</span>
+            <span className="status-pill">
+              Target {mattTrainingConfig.targetReadinessScore}
+            </span>
           </div>
-          <div className="coverage-bar" aria-label={`${mastery}% mastered`}>
-            <span style={{ width: `${mastery}%` }} />
+          <div className="readiness-score-row">
+            <div
+              className="readiness-ring"
+              style={{
+                background: `conic-gradient(#e7ae43 ${readiness.readinessScore}%, #e5ebe6 0)`,
+              }}
+            >
+              <span>{readiness.readinessScore}</span>
+            </div>
+            <div>
+              <strong>
+                {hasBaseline
+                  ? `Expected ${readiness.predictedCorrectRange.low}-${readiness.predictedCorrectRange.high} correct`
+                  : "Baseline needed before score prediction"}
+              </strong>
+              <p>
+                {!hasBaseline
+                  ? "Complete one scored full mock or several coached problems to establish Matt's starting point."
+                  : readiness.gapToTarget
+                  ? `${readiness.gapToTarget} more reliable question${readiness.gapToTarget === 1 ? "" : "s"} needed to reach 20.`
+                  : "The current estimate reaches the 20-question target."}
+              </p>
+            </div>
           </div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            {[
-              "Arithmetic",
-              "Number Theory",
-              "Algebra",
-              "Geometry",
-              "Counting & Probability",
-              "Statistics & Logic",
-            ].map((domain) => {
-              const topics = knowledgeTopics.filter((topic) => topic.domain === domain);
-              const value = Math.round(
-                topics.reduce(
-                  (sum, topic) => sum + (student.mastery[topic.id] ?? 0),
-                  0,
-                ) / topics.length,
-              );
-              return (
-                <div className="domain-row" key={domain}>
-                  <span>{domain}</span>
+          <div className="readiness-components">
+            {Object.entries(readiness.components).map(([key, value]) => (
+              <div key={key}>
+                <span>
+                  {componentLabels[key as keyof typeof componentLabels]}
                   <strong>{value}%</strong>
-                </div>
-              );
-            })}
+                </span>
+                <div><i style={{ width: `${value}%` }} /></div>
+              </div>
+            ))}
           </div>
         </article>
 
-        <article className="panel experiment-card">
-          <p className="eyebrow">A/B crossover</p>
-          <h3>Current coaching mode: {variant}</h3>
-          <p>
-            {variant === "A"
-              ? "Hints first: the coach reveals one small step at a time."
-              : "Worked example first: the coach shows a parallel example before your problem."}
-          </p>
-          <div className="experiment-note">
-            Matt and Chris switch modes weekly. Completion, accuracy, time, and
-            hint use are compared within each student.
+        <article className="panel daily-focus-card">
+          <p className="eyebrow">Today&apos;s diagnosis</p>
+          <h3>{focus}</h3>
+          <div className="focus-list">
+            <div>
+              <BrainCircuit size={17} />
+              <span>
+                Weak knowledge
+                <strong>{weakestTopic.title}</strong>
+              </span>
+            </div>
+            <div>
+              <Target size={17} />
+              <span>
+                Weak tool
+                <strong>
+                  {weakestTool
+                    ? weakestTool.tool.replaceAll("_", " ")
+                    : "Not enough tool data"}
+                </strong>
+              </span>
+            </div>
+            <div>
+              <BookOpenCheck size={17} />
+              <span>
+                Main error pattern
+                <strong>
+                  {mainError
+                    ? `${mainError.errorType.replaceAll("_", " ")} (${mainError.percentage}%)`
+                    : "Complete practice to diagnose"}
+                </strong>
+              </span>
+            </div>
           </div>
+          <button className="secondary-button" onClick={() => onNavigate("toolbox")}>
+            Open problem-solving toolbox
+          </button>
         </article>
       </section>
     </div>
