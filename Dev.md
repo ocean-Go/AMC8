@@ -303,6 +303,14 @@ Acceptance:
   summary, completed MiniMax Vision successfully, and reported no browser
   console errors.
 
+## 2026-06-11: Production domain
+
+- Added `https://amc8-mc.vercel.app` as the project's public production domain.
+- Verified anonymous mobile access returns HTTP 200 and loads Thinking Replay
+  without browser console errors.
+- Retained the previous Vercel domain as a compatibility URL for existing
+  bookmarks.
+
 Security audit:
 
 - `npm audit --omit=dev` reports two moderate findings in the PostCSS version

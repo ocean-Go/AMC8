@@ -109,6 +109,8 @@ training behavior has been validated.
 
 ## Deployment
 
+Production URL: `https://amc8-mc.vercel.app`.
+
 The application is a standard Next.js project and can be deployed to Vercel.
 Set `MINIMAX_API_KEY` and optionally `MINIMAX_MODEL` in the deployment
 environment. The default China-region endpoint is
