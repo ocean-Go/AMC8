@@ -16,6 +16,7 @@ test("student can navigate the core learning flow", async ({ page }) => {
 
   await page.getByRole("button", { name: "AI coach" }).click();
   await expect(page.getByRole("heading", { name: "Think first. Reveal less." })).toBeVisible();
+  await expect(page.getByText("Local coaching only")).toBeVisible();
 });
 
 test("solution paper records handwriting and produces a saved review", async ({ page }) => {

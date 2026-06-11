@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { Brain, Lightbulb, Send, Sparkles } from "lucide-react";
@@ -38,11 +38,27 @@ export function CoachPanel({
   const [showHint, setShowHint] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [prompt, setPrompt] = useState("");
+  const [minimaxConfigured, setMinimaxConfigured] = useState<boolean | null>(null);
   const question = practiceQuestions[questionIndex % practiceQuestions.length];
   const variant = getExperimentVariant(studentId);
   const { messages, sendMessage, status, error } = useChat({
     transport: new DefaultChatTransport({ api: "/api/chat" }),
   });
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/ai-status")
+      .then((response) => response.json())
+      .then((result: { minimaxConfigured?: boolean }) => {
+        if (active) setMinimaxConfigured(Boolean(result.minimaxConfigured));
+      })
+      .catch(() => {
+        if (active) setMinimaxConfigured(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   function record(name: ExperimentEvent["name"], correct?: boolean) {
     onEvent({
@@ -178,7 +194,13 @@ export function CoachPanel({
               <Brain size={20} />
               <h3>Ask the coach</h3>
             </div>
-            <span className="status-pill">MiniMax optional</span>
+            <span className="status-pill">
+              {minimaxConfigured === null
+                ? "Checking MiniMax"
+                : minimaxConfigured
+                  ? "MiniMax coach active"
+                  : "Local coaching only"}
+            </span>
           </div>
           <div className="chat-stream">
             {messages.length === 0 && (
@@ -201,7 +223,8 @@ export function CoachPanel({
           </div>
           {error && (
             <p className="ai-note">
-              AI is not configured yet. Built-in hints and solutions remain available.
+              MiniMax could not answer this request. Built-in hints and solutions
+              remain available.
             </p>
           )}
           <div className="chat-input">

@@ -172,6 +172,16 @@ Release:
   Consequently, the deployed solution paper currently uses the local
   process-only fallback until `MINIMAX_API_KEY` is added in Vercel.
 
+## 2026-06-11: MiniMax production activation
+
+- Confirmed `MINIMAX_API_KEY` is encrypted in Vercel for Preview and Production.
+- Added `/api/ai-status`, which reports configuration readiness without
+  exposing the key.
+- AI Coach now displays `MiniMax coach active` when the production runtime can
+  see the key, and `Local coaching only` when it cannot.
+- The text Coach is intentionally not labeled `MiniMax vision`; that label is
+  reserved for solution-paper image analysis.
+
 Security audit:
 
 - `npm audit --omit=dev` reports two moderate findings in the PostCSS version
