@@ -161,6 +161,17 @@ MVP boundary:
 - The local fallback cannot read handwriting and must not be presented as a
   mathematical correctness review.
 
+Release:
+
+- Feature commit: `5d14b7a` (`Add AI solution paper MVP`).
+- Production URL: `https://platform-rho-gilt.vercel.app`.
+- Production deployment reached Vercel `READY` state.
+- A 390x844 production smoke test opened the solution paper successfully and
+  reported no browser console errors.
+- No production environment variables were configured at release time.
+  Consequently, the deployed solution paper currently uses the local
+  process-only fallback until `MINIMAX_API_KEY` is added in Vercel.
+
 Security audit:
 
 - `npm audit --omit=dev` reports two moderate findings in the PostCSS version
