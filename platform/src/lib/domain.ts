@@ -70,11 +70,60 @@ export interface ExperimentEvent {
   createdAt: string;
 }
 
+export interface StrokePoint {
+  x: number;
+  y: number;
+  t: number;
+}
+
+export interface SolutionStroke {
+  id: string;
+  tool: "pen" | "eraser";
+  color: string;
+  width: number;
+  startedAt: number;
+  endedAt: number;
+  points: StrokePoint[];
+}
+
+export interface SolutionProcessMetrics {
+  durationSeconds: number;
+  activeSeconds: number;
+  strokeCount: number;
+  eraserStrokeCount: number;
+  undoCount: number;
+  pauseCount: number;
+  longestPauseSeconds: number;
+}
+
+export interface SolutionAnalysis {
+  source: "minimax" | "local";
+  summary: string;
+  approach: string[];
+  strengths: string[];
+  unclearPoints: string[];
+  errors: string[];
+  suggestions: string[];
+  notableIdea: string | null;
+}
+
+export interface SolutionPaperRecord {
+  id: string;
+  studentId: StudentId;
+  questionId: string;
+  questionPrompt: string;
+  createdAt: string;
+  metrics: SolutionProcessMetrics;
+  strokes: SolutionStroke[];
+  analysis: SolutionAnalysis;
+}
+
 export interface StudentState {
   mastery: Record<string, number>;
   attempts: MockAttempt[];
   mistakes: Mistake[];
   experimentEvents: ExperimentEvent[];
+  solutionPapers: SolutionPaperRecord[];
 }
 
 export interface AppState {

@@ -11,6 +11,7 @@ export const emptyStudentState = (): StudentState => ({
   attempts: [],
   mistakes: [],
   experimentEvents: [],
+  solutionPapers: [],
 });
 
 export const createInitialState = (): AppState => ({

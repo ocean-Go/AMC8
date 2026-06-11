@@ -2,7 +2,8 @@
 
 An adaptive AMC 8 learning system for Matt and Chris. It combines a complete
 knowledge map, past-contest mock mode, automatic scoring, an AI coach, a
-spaced-review mistake notebook, and parent/admin oversight.
+spaced-review mistake notebook, an AI solution paper, and parent/admin
+oversight.
 
 ## Run locally
 
@@ -25,6 +26,19 @@ local `Material/` and `amc8-markdown/` folders are available.
 The built-in hints, practice, mock scoring, knowledge map, and mistake notebook
 work without an API key. Student data is stored in the current browser using
 `localStorage`.
+
+## AI solution paper
+
+The student can select a practice problem, write a solution on a touch or
+mouse-enabled canvas, undo or erase strokes, replay the full process, and save
+the result to their personal history. The system records total time, active
+writing time, pauses, revisions, and stroke count.
+
+With `MINIMAX_API_KEY` configured, MiniMax M3 receives the final solution image
+and process metrics, then returns a structured review of the student's
+approach, unclear steps, likely errors, strengths, and next action. Without a
+key, the feature remains usable and returns an explicit process-only local
+review.
 
 ## Verification
 

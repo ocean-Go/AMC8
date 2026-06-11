@@ -6,6 +6,24 @@ import { createInitialState } from "@/lib/learning";
 
 const storageKey = "amc8-learning-state-v1";
 
+function normalizeState(saved: AppState): AppState {
+  const initial = createInitialState();
+  return {
+    students: {
+      matt: {
+        ...initial.students.matt,
+        ...saved.students?.matt,
+        solutionPapers: saved.students?.matt?.solutionPapers ?? [],
+      },
+      chris: {
+        ...initial.students.chris,
+        ...saved.students?.chris,
+        solutionPapers: saved.students?.chris?.solutionPapers ?? [],
+      },
+    },
+  };
+}
+
 export function useLearningState() {
   const [state, setState] = useState<AppState>(createInitialState);
   const [loaded, setLoaded] = useState(false);
@@ -15,7 +33,7 @@ export function useLearningState() {
     const timer = window.setTimeout(() => {
       if (saved) {
         try {
-          setState(JSON.parse(saved) as AppState);
+          setState(normalizeState(JSON.parse(saved) as AppState));
         } catch {
           window.localStorage.removeItem(storageKey);
         }

@@ -1,8 +1,5 @@
-import { createOpenAI } from "@ai-sdk/openai";
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
-
-const minimaxBaseUrl =
-  process.env.MINIMAX_BASE_URL ?? "https://api.minimaxi.com/v1";
+import { createMiniMaxProvider } from "@/lib/minimax";
 
 export async function POST(request: Request) {
   if (!process.env.MINIMAX_API_KEY) {
@@ -13,25 +10,7 @@ export async function POST(request: Request) {
   }
 
   const { messages }: { messages: UIMessage[] } = await request.json();
-  const minimax = createOpenAI({
-    name: "minimax",
-    baseURL: minimaxBaseUrl,
-    apiKey: process.env.MINIMAX_API_KEY,
-    fetch: async (input, init) => {
-      if (typeof init?.body !== "string") {
-        return fetch(input, init);
-      }
-
-      const body = JSON.parse(init.body) as Record<string, unknown>;
-      return fetch(input, {
-        ...init,
-        body: JSON.stringify({
-          ...body,
-          thinking: { type: "disabled" },
-        }),
-      });
-    },
-  });
+  const minimax = createMiniMaxProvider();
   const result = streamText({
     model: minimax.chat(process.env.MINIMAX_MODEL ?? "MiniMax-M3"),
     system:

@@ -41,6 +41,7 @@ export function OversightPanel({ state, contests, admin }: OversightPanelProps) 
                 <div><strong>{averageMastery(student)}%</strong><span>mastery</span></div>
                 <div><strong>{student.attempts.length}</strong><span>mocks</span></div>
                 <div><strong>{student.mistakes.length}</strong><span>mistakes</span></div>
+                <div><strong>{student.solutionPapers.length}</strong><span>solution papers</span></div>
                 <div><strong>{answers.length ? Math.round((correct / answers.length) * 100) : 0}%</strong><span>practice accuracy</span></div>
               </div>
             </article>

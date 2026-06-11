@@ -6,6 +6,7 @@ import {
   BookMarked,
   BrainCircuit,
   ClipboardCheck,
+  FilePenLine,
   GraduationCap,
   LayoutDashboard,
   Settings2,
@@ -17,6 +18,7 @@ import { KnowledgePanel } from "@/components/knowledge-panel";
 import { MistakesPanel } from "@/components/mistakes-panel";
 import { MockPanel } from "@/components/mock-panel";
 import { OversightPanel } from "@/components/oversight-panel";
+import { SolutionPaperPanel } from "@/components/solution-paper-panel";
 import { useLearningState } from "@/hooks/use-learning-state";
 import type {
   AnswerChoice,
@@ -33,6 +35,7 @@ const studentNav = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "learn", label: "Knowledge", icon: GraduationCap },
   { id: "mock", label: "Mock tests", icon: ClipboardCheck },
+  { id: "solution-paper", label: "AI solution paper", icon: FilePenLine },
   { id: "coach", label: "AI coach", icon: BrainCircuit },
   { id: "mistakes", label: "Mistake book", icon: BookMarked },
 ];
@@ -168,6 +171,18 @@ export function LearningSystem() {
         {view === "dashboard" && <DashboardPanel student={student} studentId={studentId} onNavigate={setView} />}
         {view === "learn" && <KnowledgePanel student={student} onMasteryChange={setMastery} />}
         {view === "mock" && <MockPanel contests={contests} studentId={studentId} onComplete={completeMock} />}
+        {view === "solution-paper" && (
+          <SolutionPaperPanel
+            studentId={studentId}
+            records={student.solutionPapers}
+            onSave={(record) =>
+              updateStudent((current) => ({
+                ...current,
+                solutionPapers: [record, ...current.solutionPapers],
+              }))
+            }
+          />
+        )}
         {view === "coach" && (
           <CoachPanel
             studentId={studentId}

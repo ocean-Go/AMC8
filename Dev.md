@@ -116,11 +116,50 @@ Final results:
 
 - Material import: 27 PDFs, 26 validated answer keys.
 - ESLint: passed.
-- Vitest: 6 tests passed.
+- Vitest: 8 tests passed.
 - Next.js production build: passed.
-- Playwright Chromium: 2 end-to-end tests passed.
-- Browser test origin was standardized on `http://localhost:3000` so Next.js
-  hydration and HMR remain same-origin.
+- Playwright Chromium: 4 end-to-end tests passed.
+- Browser acceptance runs against an isolated production server on
+  `http://localhost:3100`.
+
+## 2026-06-11: AI solution paper MVP
+
+Status: implemented and accepted locally.
+
+MVP scope:
+
+- Added a touch, pen, and mouse compatible canvas for solving one selected
+  guided-practice problem.
+- Records normalized stroke coordinates, elapsed time, active writing time,
+  pauses of at least five seconds, undo count, eraser use, and stroke count.
+- Supports pen, eraser, undo, clear, and accelerated process replay.
+- Saves each report independently under the active Matt or Chris profile.
+- Sends the final PNG and process metrics to MiniMax M3 through the MiniMax CN
+  OpenAI-compatible endpoint.
+- Requests a structured report containing approach summary, clear steps,
+  unclear steps, likely errors, strengths, a next action, and a confidence
+  level.
+- Falls back to a clearly labeled process-only local report when the API key is
+  absent or the model request fails.
+
+Acceptance:
+
+- Drawing two strokes and submitting produces a report and one saved history
+  record.
+- Existing browser data migrates safely when `solutionPapers` is absent.
+- Canvas coordinates remain stable when the visible canvas is resized.
+- Mobile and desktop layouts keep the question selector, canvas, tools, report,
+  and history inside their cards.
+- Process metric unit tests cover pauses, erasing, undo counts, and empty input.
+
+MVP boundary:
+
+- MiniMax analyzes the final written image together with aggregate process
+  metrics. It does not yet receive a frame-by-frame video of every stroke.
+- Reports and stroke data remain in browser `localStorage`; there is no
+  cross-device sync or parent-side playback archive yet.
+- The local fallback cannot read handwriting and must not be presented as a
+  mathematical correctness review.
 
 Security audit:
 
@@ -140,6 +179,8 @@ Security audit:
   hosted database.
 - A real MiniMax API key is required for live AI chat; built-in coaching remains
   available without it.
+- A real MiniMax API key is required for handwriting interpretation in AI
+  solution paper; its process capture and local metrics work without one.
 
 ## Next production upgrades
 
@@ -148,3 +189,5 @@ Security audit:
    labels.
 3. Add authenticated cloud sync and administrator content correction.
 4. Add weekly experiment summaries after enough crossover sessions accumulate.
+5. Add sampled stroke-frame analysis and compare its feedback quality with the
+   final-image MVP before adopting full process-video analysis.
